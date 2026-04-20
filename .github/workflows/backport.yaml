@@ -24,22 +24,15 @@ jobs:
         )
       )
     steps:
-      - name: Generate token
-        id: generate-token
-        uses: tibdex/github-app-token@v2
-        with:
-          app_id: ${{ secrets.APP_ID }}
-          private_key: ${{ secrets.PRIVATE_KEY }}
-
       - uses: tibdex/backport@v2
         id: backport
         with:
-          github_token: ${{ steps.generate-token.outputs.token }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           title_template: "<%= title %> (backport #<%= number %>)"
 
       - name: Request review from original author
         env:
-          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_JSON: ${{ steps.backport.outputs.created_pull_requests }}
           ORIGINAL_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
