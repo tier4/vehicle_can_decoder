@@ -26,7 +26,7 @@
 vehicle_can_node:
   ros__parameters:
     can_topic: /vehicle/from_can_bus
-    signal_timeout_ms: 500
+    signal_timeout_ms: 2000
     diagnostics_topic: /vehicle/diagnostics
     diagnostics_rate_hz: 1.0
 
@@ -47,7 +47,11 @@ vehicle_can_node:
       - PITCH_VEL # ANG_VEL_RPT            → rad/s
       - ROLL_VEL # ANG_VEL_RPT            → rad/s
       # body.lights
-      - CAN560_OUTPUT_VALUE # TURN_RPT(560)          → turn signal enum
+      - CAN560_OUTPUT_VALUE # TURN_RPT(560)          → turn signal enum (value 3 = HAZARD)
+      # body.lights.hazard: PACMod has no separate hazard signal.
+      #   Hazard state is encoded in body.lights.turn_signal as value 3 (HAZARD).
+      #   body.lights.hazard is therefore STATUS_INITIAL for PACMod configs.
+      #   Cross-platform consumers should treat (turn_signal == 3 OR hazard == 1) as hazard.
 
     aliases.VEHICLE_SPEED: dynamics.speed.longitudinal
     aliases.WHEEL_SPD_AXLE_1_LEFT: dynamics.wheel_speed.front_right

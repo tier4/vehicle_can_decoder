@@ -97,6 +97,14 @@ ros2 topic echo /vehicle/diagnostics
 | Abstracted Schema Design     | [docs/abstracted_schema.md](docs/abstracted_schema.md) |
 | Troubleshooting              | [docs/troubleshooting.md](docs/troubleshooting.md)     |
 | Performance Notes            | [docs/performance.md](docs/performance.md)             |
+| Known Issues                 | [docs/known_issues.md](docs/known_issues.md)           |
+
+> **Attribution**: CAN message and signal names used in this project's DBC files and
+> documentation are derived solely from publicly available open-source repositories
+> ([commaai/opendbc](https://github.com/commaai/opendbc),
+> [astuff/pacmod_dbc](https://github.com/astuff/pacmod_dbc)).
+> No proprietary or confidential OEM data is included.
+> See [docs/abstracted_schema.md](docs/abstracted_schema.md#data-sources-and-attribution) for details.
 
 ---
 

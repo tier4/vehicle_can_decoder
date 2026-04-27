@@ -53,7 +53,7 @@ vehicle_can_node:
     #   major — any name_id or unit_id changes (breaks bag/topic compatibility)
     #   minor — new signals or units appended (backward compatible)
     #   patch — comment/documentation changes only
-    schema_version: 1.0.0
+    schema_version: 1.1.0
 
     # -------------------------------------------------------------------------
     # Signal ID table
@@ -74,6 +74,7 @@ vehicle_can_node:
       - operation.throttle.report.position # id=11
       - operation.brake.report.position # id=12
       - body.lights.turn_signal # id=13
+      - body.lights.hazard # id=14
 
     # Unit for each signal, parallel to signal_id_names.
     # Values must appear in unit_id_names below.
@@ -91,6 +92,7 @@ vehicle_can_node:
       - "" # id=11 operation.throttle.report.position (normalized 0..1)
       - "" # id=12 operation.brake.report.position    (normalized 0..1)
       - enum # id=13 body.lights.turn_signal (OFF=0,LEFT=1,RIGHT=2,HAZARD=3)
+      - bool # id=14 body.lights.hazard (0=inactive, 1=active)
 
     # -------------------------------------------------------------------------
     # Unit ID table
@@ -103,6 +105,7 @@ vehicle_can_node:
       - rad/s # id=3
       - rad # id=4
       - enum # id=5
+      - bool # id=6
 
     # -------------------------------------------------------------------------
     # Output topic: all schema-assigned signals go here as a SignalGroup.
@@ -148,3 +151,4 @@ vehicle_can_node:
     schema.body.topic: /vehicle/decoded_can
     schema.body.signals:
       - body.lights.turn_signal # enum OFF=0,LEFT=1,RIGHT=2,HAZARD=3  P+T
+      - body.lights.hazard # bool 0=inactive,1=active                T

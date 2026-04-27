@@ -1,0 +1,122 @@
+# =============================================================================
+# Vehicle CAN Bridge — Toyota NODSU PT (Hybrid) DBC config
+# =============================================================================
+#
+# Load together with vehicle_schema.yaml:
+#
+#   parameters=[vehicle_schema_yaml, toyota_nodsu_pt_hybrid_yaml]
+#
+# DBC: dbc/toyota_nodsu_pt_generated.dbc
+# Pass the DBC path via the launch argument (not stored in this file):
+#
+#   ros2 launch vehicle_can_decoder vehicle_can_decoder.launch.py \
+#     config_file:=config/toyota_nodsu_pt_hybrid.yaml \
+#     dbc_file:=dbc/toyota_nodsu_pt_generated.dbc
+#
+# Hybrid-specific signal choices vs. ICE:
+#   - operation.throttle  → GAS_PEDAL_HYBRID (BO_581) instead of GAS_PEDAL (BO_705)
+#   - operation.steering  → STEER_ANGLE from STEER_TORQUE_SENSOR (BO_608, factor=0.0573 deg/LSB)
+#   - operation.brake     → not mapped (BRAKE_POSITION signal not used)
+#   - dynamics.angular_vel.pitch / roll: no matching signal in this DBC → STATUS_INITIAL
+#
+# Compound alias format: CAN{decimal_id}_SIGNAL_NAME
+#   Required when the same signal name appears in multiple CAN messages.
+#   STEER_ANGLE : BO_608, BO_881 → CAN608_STEER_ANGLE
+#   GAS_PEDAL   : BO_581, BO_705, BO_881 → CAN581_GAS_PEDAL
+#   TURN_SIGNALS: BO_881, BO_1556        → CAN1556_TURN_SIGNALS
+#
+# Turn signal note:
+#   Toyota encodes directional signals (TURN_SIGNALS) and hazard (HAZARD_LIGHT)
+#   as separate bits in BO_1556. Both are mapped to distinct canonical signals:
+#     body.lights.turn_signal (enum) ← TURN_SIGNALS  (1=left, 2=right, 3=none → 0=OFF)
+#     body.lights.hazard      (bool) ← HAZARD_LIGHT  (0=inactive, 1=active)
+#   PACMod encodes hazard as enum value 3 in a single signal; no separate hazard
+#   signal is needed for PACMod configs.
+#
+# Transforms: exprtk expressions where 'x' is the raw DBC physical value.
+#   'pi' is available as a constant.
+# =============================================================================
+
+vehicle_can_node:
+  ros__parameters:
+    can_topic: /vehicle/from_can_bus
+    signal_timeout_ms: 2000
+    diagnostics_topic: /vehicle/diagnostics
+    diagnostics_rate_hz: 1.0
+
+    # ── Aliases ────────────────────────────────────────────────────────────────
+    alias_names:
+      # dynamics.speed
+      - SPEED # SPEED(180)               → km/h → m/s
+      # dynamics.wheel_speed
+      - WHEEL_SPEED_FL # WHEEL_SPEEDS(170)         → km/h → m/s
+      - WHEEL_SPEED_FR # WHEEL_SPEEDS(170)         → km/h → m/s
+      - WHEEL_SPEED_RL # WHEEL_SPEEDS(170)         → km/h → m/s
+      - WHEEL_SPEED_RR # WHEEL_SPEEDS(170)         → km/h → m/s
+      # dynamics.angular_vel
+      - YAW_RATE # KINEMATICS(36)            → deg/s → rad/s
+      # operation.steering — compound alias: STEER_ANGLE also in BO_881
+      - CAN608_STEER_ANGLE # STEER_TORQUE_SENSOR(608)  → deg → rad
+      # operation.throttle — hybrid: GAS_PEDAL_HYBRID(581), not GAS_PEDAL(705)
+      - CAN581_GAS_PEDAL # GAS_PEDAL_HYBRID(581)     → 0–1 (already normalized)
+      # body.lights — compound alias: TURN_SIGNALS also in BO_881
+      - CAN1556_TURN_SIGNALS # BLINKERS_STATE(1556)      → enum
+      - HAZARD_LIGHT # BLINKERS_STATE(1556)      → bool
+
+    # dynamics
+    aliases.SPEED: dynamics.speed.longitudinal
+    aliases.WHEEL_SPEED_FL: dynamics.wheel_speed.front_left
+    aliases.WHEEL_SPEED_FR: dynamics.wheel_speed.front_right
+    aliases.WHEEL_SPEED_RL: dynamics.wheel_speed.rear_left
+    aliases.WHEEL_SPEED_RR: dynamics.wheel_speed.rear_right
+    aliases.YAW_RATE: dynamics.angular_vel.yaw
+
+    # operation
+    aliases.CAN608_STEER_ANGLE: operation.steering.report.angle
+    aliases.CAN581_GAS_PEDAL: operation.throttle.report.position
+
+    # body
+    aliases.CAN1556_TURN_SIGNALS: body.lights.turn_signal
+    aliases.HAZARD_LIGHT: body.lights.hazard
+
+    # ── Transforms ────────────────────────────────────────────────────────────
+    transform_names:
+      - dynamics.speed.longitudinal
+      - dynamics.wheel_speed.front_left
+      - dynamics.wheel_speed.front_right
+      - dynamics.wheel_speed.rear_left
+      - dynamics.wheel_speed.rear_right
+      - dynamics.angular_vel.yaw
+      - operation.steering.report.angle
+      - body.lights.turn_signal
+
+    # Speed: km/h → m/s
+    # DBC: SPEED(180) SPEED  factor=0.01 offset=0  unit=km/h
+    transforms.dynamics.speed.longitudinal.expression: x / 3.6
+    transforms.dynamics.speed.longitudinal.unit: m/s
+
+    # Wheel speeds: km/h → m/s
+    # DBC: WHEEL_SPEEDS(170)  factor=0.01 offset=-67.67 — 'x' is already calibrated km/h
+    transforms.dynamics.wheel_speed.front_left.expression: x / 3.6
+    transforms.dynamics.wheel_speed.front_left.unit: m/s
+    transforms.dynamics.wheel_speed.front_right.expression: x / 3.6
+    transforms.dynamics.wheel_speed.front_right.unit: m/s
+    transforms.dynamics.wheel_speed.rear_left.expression: x / 3.6
+    transforms.dynamics.wheel_speed.rear_left.unit: m/s
+    transforms.dynamics.wheel_speed.rear_right.expression: x / 3.6
+    transforms.dynamics.wheel_speed.rear_right.unit: m/s
+
+    # Yaw rate: deg/s → rad/s
+    # DBC: KINEMATICS(36) YAW_RATE  factor=0.244 offset=-125  unit=deg/s
+    transforms.dynamics.angular_vel.yaw.expression: x * pi / 180.0
+    transforms.dynamics.angular_vel.yaw.unit: rad/s
+
+    # Steering angle: deg → rad
+    # DBC: STEER_TORQUE_SENSOR(608) STEER_ANGLE  factor=0.0573 offset=0  unit="" (degrees)
+    transforms.operation.steering.report.angle.expression: x * pi / 180.0
+    transforms.operation.steering.report.angle.unit: rad
+
+    # Turn signals: DBC enum (1=left, 2=right, 3=none) → canonical (0=OFF, 1=LEFT, 2=RIGHT)
+    # DBC: BLINKERS_STATE(1556)  VAL_: 1 "left"  2 "right"  3 "none"
+    transforms.body.lights.turn_signal.expression: "x == 1 ? 1 : x == 2 ? 2 : 0"
+    transforms.body.lights.turn_signal.unit: enum
