@@ -1,3 +1,8 @@
+# ── OS-specific ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Editor / IDE ─────────────────────────────────────────────
 # Vim
 *.swp
 *.swo
@@ -5,11 +10,56 @@
 # Visual Studio Code
 .vscode/
 *.code-workspace
+# Claude Code
+.claude/
+# Cursor
+.cursor/
+# Windsurf
+.windsurf/
+# Antigravity (Google)
+.agent/
+# JetBrains
+.idea/
 
-# colcon
+# ── C/C++ build artifacts ────────────────────────────────────
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles/
+
+# ── Python ───────────────────────────────────────────────────
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ── ROS 2 / colcon ──────────────────────────────────────────
 build/
 install/
 log/
+/src/dependencies
+.colcon*
+# rosbag files (all storage backends)
+*.bag
+*.db3
+*.mcap
 
-# Python
-*.pyc
+# ── IDE / language server ────────────────────────────────────
+.clangd/
+compile_commands.json
+
+# ── Cache ────────────────────────────────────────────────────
+.cache/
+
+# ── Private docs ─────────────────────────────────────────────
+.docs/
+
+# ── DBC files ────────────────────────────────────────────────
+# (often NDA-restricted; place in dbc/ but do not commit)
+dbc/*.dbc
+!dbc/.gitkeep
