@@ -7,7 +7,6 @@
     - source: .github/workflows/build-and-test.yaml
     - source: .github/workflows/build-and-test-differential.yaml
     - source: .github/workflows/pre-commit.yaml
-    - source: .github/workflows/pre-commit-optional.yaml
     - source: .github/workflows/semantic-pull-request.yaml
     - source: .github/workflows/spell-check-daily.yaml
     - source: .github/workflows/spell-check-differential.yaml
@@ -16,7 +15,6 @@
     - source: .clang-tidy
     - source: .markdownlint.yaml
     - source: .pre-commit-config.yaml
-    - source: .pre-commit-config-optional.yaml
     - source: .prettierignore
     - source: .prettierrc.yaml
     - source: .yamllint.yaml

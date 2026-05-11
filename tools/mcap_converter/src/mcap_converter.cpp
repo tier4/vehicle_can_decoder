@@ -649,8 +649,9 @@ int main(int argc, char * argv[])
       // Schema-based routing takes precedence over CAN-ID-based routing.
       std::string domain;
       if (!cfg.signal_to_domain.empty()) {
-        const auto it = cfg.signal_to_domain.find(name);
-        domain = (it != cfg.signal_to_domain.end()) ? it->second : SignalRouter::kUnassignedDomain;
+        const auto domain_it = cfg.signal_to_domain.find(name);
+        domain = (domain_it != cfg.signal_to_domain.end()) ? domain_it->second
+                                                           : SignalRouter::kUnassignedDomain;
       } else {
         domain = router.domain_for_id(can_frame.id);
       }

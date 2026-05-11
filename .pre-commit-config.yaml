@@ -93,6 +93,27 @@ repos:
         args: [--quiet]
         exclude: .cu
 
+  - repo: local
+    hooks:
+      - id: cppcheck
+        name: cppcheck
+        description: Static analysis with cppcheck
+        entry: cppcheck
+        language: system
+        types_or: [c++, c]
+        exclude: ^(test/|.*/test/|examples/|.*/examples/|benchmarks/|.*/benchmarks/)
+        args:
+          [
+            --enable=all,
+            --inconclusive,
+            "-DPLUGINLIB_EXPORT_CLASS(class_type, base_class)=",
+            -Dslots=,
+            -DQ_SLOTS=,
+            --error-exitcode=1,
+            --suppressions-list=.cppcheck_suppressions,
+            --inline-suppr,
+          ]
+
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0.36.2
     hooks:
@@ -114,3 +135,9 @@ repos:
     hooks:
       - id: hadolint
         exclude: .svg$
+
+  - repo: https://github.com/tcort/markdown-link-check
+    rev: v3.14.2
+    hooks:
+      - id: markdown-link-check
+        args: [--quiet, --config=.markdown-link-check.json]
