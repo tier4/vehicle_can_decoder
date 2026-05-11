@@ -8,6 +8,9 @@ ci:
   autoupdate_schedule: quarterly
   autoupdate_commit_msg: "ci(pre-commit): quarterly autoupdate"
 
+# Skip colcon build artifacts globally for every hook.
+exclude: ^(build|install|log)/
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

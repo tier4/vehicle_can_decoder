@@ -11,7 +11,6 @@
     - source: .clang-format
     - source: .clang-tidy
     - source: .markdownlint.yaml
-    - source: .pre-commit-config.yaml
     - source: .prettierignore
     - source: .prettierrc.yaml
     - source: .yamllint.yaml
