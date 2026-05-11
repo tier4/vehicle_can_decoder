@@ -10,6 +10,17 @@ get_filename_component(VCD_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 
 include(FetchContent)
 
+# Bridge env vars to FetchContent cache variables (see main CMakeLists.txt).
+foreach(_dep mcap dbcppp exprtk)
+  string(TOUPPER ${_dep} _dep_uc)
+  if(DEFINED ENV{FETCHCONTENT_SOURCE_DIR_${_dep_uc}})
+    set(FETCHCONTENT_SOURCE_DIR_${_dep_uc} "$ENV{FETCHCONTENT_SOURCE_DIR_${_dep_uc}}")
+  endif()
+endforeach()
+if(DEFINED ENV{FETCHCONTENT_FULLY_DISCONNECTED})
+  set(FETCHCONTENT_FULLY_DISCONNECTED "$ENV{FETCHCONTENT_FULLY_DISCONNECTED}")
+endif()
+
 # ── Foxglove MCAP C++ library (header-only, no ROS2 dependency) ───────────────
 # Populated without processing the top-level CMakeLists.txt so we avoid
 # pulling in unrelated targets from the monorepo.

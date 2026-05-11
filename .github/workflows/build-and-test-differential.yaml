@@ -55,6 +55,10 @@ jobs:
       - name: Build
         if: ${{ steps.get-modified-packages.outputs.modified-packages != '' }}
         uses: autowarefoundation/autoware-github-actions/colcon-build@v1
+        env:
+          FETCHCONTENT_SOURCE_DIR_DBCPPP: ${{ github.workspace }}/dependency_ws/dbcppp
+          FETCHCONTENT_SOURCE_DIR_EXPRTK: ${{ github.workspace }}/dependency_ws/exprtk
+          FETCHCONTENT_FULLY_DISCONNECTED: "ON"
         with:
           rosdistro: ${{ matrix.rosdistro }}
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}
@@ -64,6 +68,10 @@ jobs:
         id: test
         if: ${{ steps.get-modified-packages.outputs.modified-packages != '' }}
         uses: autowarefoundation/autoware-github-actions/colcon-test@v1
+        env:
+          FETCHCONTENT_SOURCE_DIR_DBCPPP: ${{ github.workspace }}/dependency_ws/dbcppp
+          FETCHCONTENT_SOURCE_DIR_EXPRTK: ${{ github.workspace }}/dependency_ws/exprtk
+          FETCHCONTENT_FULLY_DISCONNECTED: "ON"
         with:
           rosdistro: ${{ matrix.rosdistro }}
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}

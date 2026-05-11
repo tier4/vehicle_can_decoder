@@ -1,1 +1,9 @@
 repositories:
+  dbcppp:
+    type: git
+    url: https://github.com/xR3b0rn/dbcppp.git
+    version: v3.2.6
+  exprtk:
+    type: git
+    url: https://github.com/ArashPartow/exprtk.git
+    version: "0.0.3"

@@ -25,6 +25,20 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 # ── Third-party: dbcppp ──────────────────────────────────────────────────────
 include(FetchContent)
 
+# Bridge env vars to FetchContent cache variables so CI / offline builds can
+# point FetchContent at a pre-fetched source tree (e.g. one populated by
+# `vcs import` from build_depends.repos). When the env vars are unset, the
+# Declares below fall through to a normal git clone.
+foreach(_dep dbcppp exprtk)
+  string(TOUPPER ${_dep} _dep_uc)
+  if(DEFINED ENV{FETCHCONTENT_SOURCE_DIR_${_dep_uc}})
+    set(FETCHCONTENT_SOURCE_DIR_${_dep_uc} "$ENV{FETCHCONTENT_SOURCE_DIR_${_dep_uc}}")
+  endif()
+endforeach()
+if(DEFINED ENV{FETCHCONTENT_FULLY_DISCONNECTED})
+  set(FETCHCONTENT_FULLY_DISCONNECTED "$ENV{FETCHCONTENT_FULLY_DISCONNECTED}")
+endif()
+
 FetchContent_Declare(
   dbcppp
   GIT_REPOSITORY https://github.com/xR3b0rn/dbcppp.git
