@@ -1,10 +1,10 @@
 // Copyright 2026 TIER IV, Inc.
 //
-// Offline MCAP conversion tool — fully standalone, no ROS2 installation required.
+// Offline MCAP conversion tool — fully standalone, no ROS 2 installation required.
 //
 // Reads can_msgs/Frame messages from an input MCAP and writes
 // vehicle_can_decoder/SignalGroup messages to an output MCAP by running the
-// same decode → alias → transform pipeline as the live ROS2 node.
+// same decode → alias → transform pipeline as the live ROS 2 node.
 //
 // CDR serialization for both message types is implemented inline.
 // MCAP file I/O uses the foxglove C++ library (fetched at build time).
@@ -44,10 +44,10 @@
 //
 // Implements the subset of CDR (Common Data Representation, little-endian)
 // needed to deserialize can_msgs/Frame and serialize
-// vehicle_can_decoder/SignalGroup without linking against the ROS2 message
+// vehicle_can_decoder/SignalGroup without linking against the ROS 2 message
 // typesupport libraries.
 //
-// CDR wire format for ROS2:
+// CDR wire format for ROS 2:
 //   Bytes 0-3: encapsulation header  { 0x00, 0x01, 0x00, 0x00 } (CDR-LE)
 //   Bytes 4-N: serialized fields, each aligned to its natural size
 //   Strings:   uint32 length (includes NUL) then char bytes
@@ -269,7 +269,7 @@ static const char kSignalGroupMsgDef[] =
 
 // ── YAML helpers ──────────────────────────────────────────────────────────────
 //
-// The vehicle config YAML uses ROS2 parameter conventions:
+// The vehicle config YAML uses ROS 2 parameter conventions:
 //
 //   vehicle_can_node:
 //     ros__parameters:

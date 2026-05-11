@@ -3,7 +3,7 @@
 
 std_msgs/Header header
 
-# ROS2 topic name providing CAN frames (can_topic parameter).
+# ROS 2 topic name providing CAN frames (can_topic parameter).
 string can_topic
 
 # Cumulative counters since node start.

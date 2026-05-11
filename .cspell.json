@@ -1,5 +1,27 @@
 {
   "ignorePaths": [".cppcheck_suppressions"],
   "ignoreRegExpList": [],
-  "words": []
+  "words": [
+    "blockingly",
+    "commaai",
+    "dbcppp",
+    "dbcs",
+    "DPLUGINLIB",
+    "DRVR",
+    "Dslots",
+    "exprtk",
+    "FETCHCONTENT",
+    "libdbcppp",
+    "liblz",
+    "libzstd",
+    "LKAS",
+    "nodsu",
+    "opendbc",
+    "SIOCGIFINDEX",
+    "SPDVAL",
+    "suppr",
+    "TOUPPER",
+    "vcan",
+    "XMSN"
+  ]
 }

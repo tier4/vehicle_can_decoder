@@ -4,7 +4,7 @@ This document describes how to build a standalone tool that converts an MCAP fil
 raw CAN frames (`can_msgs/Frame`) into a new MCAP file containing the abstracted vehicle
 signal topics (`vehicle_can_decoder/msg/SignalGroup`), without a running ROS runtime.
 
-The tool lives at `tools/mcap_converter/` and has **no ROS2 installation dependency** — it
+The tool lives at `tools/mcap_converter/` and has **no ROS 2 installation dependency** — it
 uses the Foxglove C++ MCAP library directly and implements CDR serialization inline.
 
 ## Core Library Reusability
@@ -110,7 +110,7 @@ into a single parameter map before the pipeline is configured.
 
 ## YAML Config Structure
 
-The tool reads the same YAML format as the live ROS2 node (`vehicle_can_node.ros__parameters`
+The tool reads the same YAML format as the live ROS 2 node (`vehicle_can_node.ros__parameters`
 namespace is stripped automatically if present).
 
 ### CAN-ID-based domain routing
@@ -169,7 +169,7 @@ signal_id_names: [VehicleSpeed, SteeringAngle, BrakePress]
 
 The tool uses the **Foxglove C++ MCAP library** (`mcap/reader.hpp`, `mcap/writer.hpp`),
 fetched at build time from `https://github.com/foxglove/mcap.git` at tag
-`releases/cpp/v1.4.1`. No `rclcpp::init` or ROS2 installation is required.
+`releases/cpp/v1.4.1`. No `rclcpp::init` or ROS 2 installation is required.
 
 CDR serialization is implemented inline (`cdr::Reader` / `cdr::Writer` in
 `src/mcap_converter.cpp`) — the 4-byte CDR-LE encapsulation header is handled, and each
@@ -186,7 +186,7 @@ get_filename_component(VCD_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 
 include(FetchContent)
 
-# Foxglove MCAP (header-only, no ROS2 dependency)
+# Foxglove MCAP (header-only, no ROS 2 dependency)
 FetchContent_Declare(mcap
   GIT_REPOSITORY https://github.com/foxglove/mcap.git
   GIT_TAG        releases/cpp/v1.4.1
@@ -218,7 +218,7 @@ target_link_libraries(mcap_converter vcd_core mcap yaml-cpp::yaml-cpp)
 
 ## Using the Library in a Custom Tool
 
-`DbcDecoder`, `SignalRouter`, and `SignalTransformer` have no ROS2 dependency and can be
+`DbcDecoder`, `SignalRouter`, and `SignalTransformer` have no ROS 2 dependency and can be
 used directly in any C++ executable. The YAML config loading helpers are **not** part of
 the installed library — they live in `tools/mcap_converter/src/mcap_converter.cpp` — but
 they are self-contained and straightforward to copy into your own tool.
@@ -363,7 +363,7 @@ for (const RawSignal & raw : *raw_signals) {
 
 ### CMakeLists.txt
 
-**Standalone executable (no ROS2 required)** — compile the three source files directly,
+**Standalone executable (no ROS 2 required)** — compile the three source files directly,
 the same way `tools/mcap_converter` does:
 
 ```cmake
@@ -385,7 +385,7 @@ add_executable(my_tool src/my_tool.cpp)
 target_link_libraries(my_tool vcd_core yaml-cpp::yaml-cpp)
 ```
 
-**ROS2 package (ament)** — link against the installed library:
+**ROS 2 package (ament)** — link against the installed library:
 
 ```cmake
 find_package(vehicle_can_decoder REQUIRED)

@@ -1,13 +1,13 @@
 # vehicle_can_decoder
 
-## ROS2 CAN-to-Topic Abstraction Layer
+## ROS 2 CAN-to-Topic Abstraction Layer
 
-A config-driven ROS2 Humble C++ node that reads raw SocketCAN frames, decodes them using DBC files, applies value transformations, and publishes normalized vehicle signals to ROS2 topics.
+A config-driven ROS 2 Humble C++ node that reads raw SocketCAN frames, decodes them using DBC files, applies value transformations, and publishes normalized vehicle signals to ROS 2 topics.
 
 **Key Feature**: Add new vehicles or signals by editing YAML and DBC files — no recompilation needed.
 
 ```text
-can_msgs/Frame topic → DbcDecoder → SignalTransformer → SignalRouter → ROS2 Topics
+can_msgs/Frame topic → DbcDecoder → SignalTransformer → SignalRouter → ROS 2 Topics
   (/vehicle/from_can_bus)  (dbcppp)   (exprtk math)     (domains)     (SignalGroup)
                                                                         (std_msgs/Float64)
 ```
@@ -78,7 +78,7 @@ ros2 topic echo /vehicle/diagnostics
 
 | Package                                   | Purpose                                        |
 | ----------------------------------------- | ---------------------------------------------- |
-| **rclcpp**, **std_msgs**, **ament_cmake** | ROS2 Humble                                    |
+| **rclcpp**, **std_msgs**, **ament_cmake** | ROS 2 Humble                                   |
 | **dbcppp**                                | DBC file parsing (fetched via CMake)           |
 | **exprtk**                                | Math expression evaluation (fetched via CMake) |
 | **ament_cmake_gtest**                     | Unit tests                                     |

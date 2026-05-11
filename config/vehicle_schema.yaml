@@ -1,5 +1,5 @@
 # =============================================================================
-# Vehicle CAN Bridge — Vehicle Signal Schema (ROS2 parameter format)
+# Vehicle CAN Bridge — Vehicle Signal Schema (ROS 2 parameter format)
 # =============================================================================
 #
 # Load this file alongside a per-DBC config in your launch file:

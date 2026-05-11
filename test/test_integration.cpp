@@ -22,7 +22,7 @@ namespace vehicle_can_decoder
 {
 
 /// Integration test: exercises the full decode → transform → route pipeline
-/// without a real ROS2 node or CAN hardware.
+/// without a real ROS 2 node or CAN hardware.
 class PipelineIntegrationTest : public ::testing::Test
 {
 protected:

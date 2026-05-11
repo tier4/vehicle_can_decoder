@@ -4,9 +4,9 @@
   <name>vehicle_can_decoder</name>
   <version>0.1.0</version>
   <description>
-    Vehicle CAN to ROS2 topic abstraction layer.
+    Vehicle CAN to ROS 2 topic abstraction layer.
     Decodes raw CAN frames using DBC files and publishes normalized vehicle
-    state signals to ROS2 topics. Fully config-driven: adding vehicles or
+    state signals to ROS 2 topics. Fully config-driven: adding vehicles or
     signals requires only YAML/DBC changes, no recompilation.
   </description>
   <maintainer email="maintainer@example.com">maintainer</maintainer>

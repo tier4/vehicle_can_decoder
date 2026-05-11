@@ -21,7 +21,7 @@ if(DEFINED ENV{FETCHCONTENT_FULLY_DISCONNECTED})
   set(FETCHCONTENT_FULLY_DISCONNECTED "$ENV{FETCHCONTENT_FULLY_DISCONNECTED}")
 endif()
 
-# ── Foxglove MCAP C++ library (header-only, no ROS2 dependency) ───────────────
+# ── Foxglove MCAP C++ library (header-only, no ROS 2 dependency) ───────────────
 # Populated without processing the top-level CMakeLists.txt so we avoid
 # pulling in unrelated targets from the monorepo.
 FetchContent_Declare(

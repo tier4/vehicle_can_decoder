@@ -31,7 +31,7 @@ struct PromotedSignalConfig
   std::string topic_suffix;  ///< Suffix used to form the topic name
 };
 
-/// ROS2 node that:
+/// ROS 2 node that:
 ///   1. Subscribes to a can_msgs/Frame topic
 ///   2. Decodes CAN frames using a DBC file (dbcppp)
 ///   3. Transforms signals via exprtk expressions
@@ -91,7 +91,7 @@ private:
   /// Canonical signal name → domain name (reverse index of domain_schema_).
   std::unordered_map<std::string, std::string> signal_to_domain_;
 
-  /// Domain name → ROS2 topic (from schema params, may differ from domains.*).
+  /// Domain name → ROS 2 topic (from schema params, may differ from domains.*).
   std::unordered_map<std::string, std::string> schema_domain_topics_;
 
   // ── Signal / unit ID tables ──────────────────────────────────────────────────

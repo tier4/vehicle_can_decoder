@@ -14,7 +14,7 @@ namespace vehicle_can_decoder
 struct DomainConfig
 {
   std::string name;                      ///< Domain name (e.g. "chassis")
-  std::string topic;                     ///< ROS2 topic to publish on
+  std::string topic;                     ///< ROS 2 topic to publish on
   std::unordered_set<uint32_t> can_ids;  ///< CAN IDs belonging to this domain
 };
 

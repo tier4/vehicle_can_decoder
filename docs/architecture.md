@@ -2,19 +2,19 @@
 
 ## Components
 
-| Module                | Purpose                                                                                  | Key Classes                            |
-| --------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------- |
-| **DbcDecoder**        | Loads DBC files; decodes CAN frames to signal name-value pairs                           | `DbcDecoder`, `RawSignal`              |
-| **SignalTransformer** | Compiles and evaluates exprtk math expressions for value transforms                      | `SignalTransformer`, `TransformConfig` |
-| **SignalRouter**      | Routes signals to domains; applies signal name aliases                                   | `SignalRouter`, `DomainConfig`         |
-| **TimeoutMonitor**    | Tracks signal freshness; detects stale signals                                           | `TimeoutMonitor`                       |
-| **CanReader**         | Provides the `CanFrame` struct (used by DbcDecoder and MCAP tooling)                     | `CanFrame`                             |
-| **VehicleCanNode**    | ROS2 node: subscribes to `can_msgs/Frame`, orchestrates all components, publishes topics | `VehicleCanNode`                       |
+| Module                | Purpose                                                                                   | Key Classes                            |
+| --------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------- |
+| **DbcDecoder**        | Loads DBC files; decodes CAN frames to signal name-value pairs                            | `DbcDecoder`, `RawSignal`              |
+| **SignalTransformer** | Compiles and evaluates exprtk math expressions for value transforms                       | `SignalTransformer`, `TransformConfig` |
+| **SignalRouter**      | Routes signals to domains; applies signal name aliases                                    | `SignalRouter`, `DomainConfig`         |
+| **TimeoutMonitor**    | Tracks signal freshness; detects stale signals                                            | `TimeoutMonitor`                       |
+| **CanReader**         | Provides the `CanFrame` struct (used by DbcDecoder and MCAP tooling)                      | `CanFrame`                             |
+| **VehicleCanNode**    | ROS 2 node: subscribes to `can_msgs/Frame`, orchestrates all components, publishes topics | `VehicleCanNode`                       |
 
 ## Signal Flow
 
 ```text
-can_msgs/Frame topic → DbcDecoder → SignalTransformer → SignalRouter → ROS2 Topics
+can_msgs/Frame topic → DbcDecoder → SignalTransformer → SignalRouter → ROS 2 Topics
   (/vehicle/from_can_bus)  (dbcppp)   (exprtk math)     (domains)     (SignalGroup)
                                                                         (std_msgs/Float64)
 ```
@@ -24,7 +24,7 @@ can_msgs/Frame topic → DbcDecoder → SignalTransformer → SignalRouter → R
 3. **SignalRouter** applies aliases and determines the domain
 4. **SignalTransformer** applies per-signal math transformations
 5. **TimeoutMonitor** checks if the signal is fresh (within `signal_timeout_ms`)
-6. **VehicleCanNode** batches signals by domain and publishes to ROS2 topics
+6. **VehicleCanNode** batches signals by domain and publishes to ROS 2 topics
 
 ## Message Types
 
@@ -55,7 +55,7 @@ One row in the signal lookup table:
 
 Published at startup and periodically on `/vehicle/schema` with transient_local QoS (see `schema_republish_interval_s`):
 
-- `header` — Standard ROS2 header
+- `header` — Standard ROS 2 header
 - `vehicle_id` — From config
 - `schema_version` (`string`) — Semantic version (major bump = breaking bag change)
 - `signal_table[]` — Array of `SignalEntry`; index by `name_id - 1`
@@ -65,7 +65,7 @@ Published at startup and periodically on `/vehicle/schema` with transient_local 
 
 Grouped signals from one domain:
 
-- `header` — ROS2 standard header with timestamp
+- `header` — ROS 2 standard header with timestamp
 - `domain` — Domain name (e.g., `"chassis"`)
 - `vehicle_id` — From config
 - `signals[]` — Array of `Signal.msg`
@@ -74,9 +74,9 @@ Grouped signals from one domain:
 
 Node health (published at `diagnostics_rate_hz`):
 
-- `header` — ROS2 standard header with timestamp
+- `header` — ROS 2 standard header with timestamp
 - `vehicle_id` — From config
-- `can_topic` — ROS2 topic name providing CAN frames
+- `can_topic` — ROS 2 topic name providing CAN frames
 - `frames_received` — Total `can_msgs/Frame` messages received
 - `frames_decoded` — Frames successfully matched to a DBC message
 - `frames_unknown` — Frames with no matching DBC message

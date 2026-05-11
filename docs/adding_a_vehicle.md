@@ -15,7 +15,7 @@
    ```
 
 3. **Edit the config file**:
-   - Set `can_topic` to the ROS2 topic publishing `can_msgs/Frame` (default: `/vehicle/from_can_bus`)
+   - Set `can_topic` to the ROS 2 topic publishing `can_msgs/Frame` (default: `/vehicle/from_can_bus`)
    - List all CAN message IDs from the DBC and group them into domains
    - For each signal, add a `transforms` entry if value conversion is needed
    - Add promoted signals if simple consumers need them

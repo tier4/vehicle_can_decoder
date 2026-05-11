@@ -8,7 +8,7 @@ sudo ip link add dev vcan0 type vcan
 sudo ip link set up vcan0
 ```
 
-## 2. Bridge vcan0 to a ROS2 Topic
+## 2. Bridge vcan0 to a ROS 2 Topic
 
 ```bash
 ros2 launch ros2_socketcan socket_can_receiver.launch.xml \

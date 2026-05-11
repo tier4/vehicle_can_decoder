@@ -24,7 +24,7 @@ vehicle_can_node:
 
 ## Domain Configuration
 
-Domains group related CAN IDs into a single ROS2 topic:
+Domains group related CAN IDs into a single ROS 2 topic:
 
 ```yaml
 # List of domain names (required)
