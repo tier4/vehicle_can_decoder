@@ -9,7 +9,6 @@
     - source: .github/workflows/spell-check-differential.yaml
     - source: .github/workflows/sync-files.yaml
     - source: .clang-format
-    - source: .clang-tidy
     - source: .markdownlint.yaml
     - source: .prettierignore
     - source: .prettierrc.yaml
