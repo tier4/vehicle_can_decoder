@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>

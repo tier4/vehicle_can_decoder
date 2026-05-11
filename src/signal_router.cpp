@@ -2,6 +2,7 @@
 
 #include "vehicle_can_decoder/signal_router.hpp"
 
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <unordered_map>

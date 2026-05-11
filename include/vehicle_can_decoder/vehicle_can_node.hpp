@@ -16,6 +16,7 @@
 #include <can_msgs/msg/frame.hpp>
 #include <std_msgs/msg/float64.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>

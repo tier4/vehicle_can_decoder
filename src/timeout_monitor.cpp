@@ -2,6 +2,7 @@
 
 #include "vehicle_can_decoder/timeout_monitor.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

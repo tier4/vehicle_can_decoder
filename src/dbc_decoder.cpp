@@ -4,6 +4,7 @@
 
 #include <dbcppp/Network.h>
 
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <stdexcept>
