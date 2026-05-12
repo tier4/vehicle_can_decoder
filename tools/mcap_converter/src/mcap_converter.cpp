@@ -459,7 +459,6 @@ Args parse_args(int argc, char * argv[])
 // ── main ──────────────────────────────────────────────────────────────────────
 
 using vehicle_can_decoder::DbcDecoder;
-using vehicle_can_decoder::SignalEntry;
 using vehicle_can_decoder::SignalRouter;
 using vehicle_can_decoder::SignalTransformer;
 
