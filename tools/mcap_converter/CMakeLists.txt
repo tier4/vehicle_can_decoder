@@ -11,7 +11,7 @@ get_filename_component(VCD_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 include(FetchContent)
 
 # Bridge env vars to FetchContent cache variables (see main CMakeLists.txt).
-foreach(_dep mcap dbcppp exprtk)
+foreach(_dep dbcppp exprtk)
   string(TOUPPER ${_dep} _dep_uc)
   if(DEFINED ENV{FETCHCONTENT_SOURCE_DIR_${_dep_uc}})
     set(FETCHCONTENT_SOURCE_DIR_${_dep_uc} "$ENV{FETCHCONTENT_SOURCE_DIR_${_dep_uc}}")
@@ -21,45 +21,27 @@ if(DEFINED ENV{FETCHCONTENT_FULLY_DISCONNECTED})
   set(FETCHCONTENT_FULLY_DISCONNECTED "$ENV{FETCHCONTENT_FULLY_DISCONNECTED}")
 endif()
 
-# ── Foxglove MCAP C++ library (header-only, no ROS 2 dependency) ───────────────
-# Populated without processing the top-level CMakeLists.txt so we avoid
-# pulling in unrelated targets from the monorepo.
-FetchContent_Declare(
-  mcap
-  GIT_REPOSITORY https://github.com/foxglove/mcap.git
-  GIT_TAG        releases/cpp/v1.4.1
-  GIT_SHALLOW    TRUE
-)
-FetchContent_GetProperties(mcap)
-if(NOT mcap_POPULATED)
-  FetchContent_Populate(mcap)
+# ── ROS 2 dependencies ────────────────────────────────────────────────────────
+# Requires: source /opt/ros/humble/setup.bash
+#           colcon build --packages-select vehicle_can_decoder
+#           source install/setup.bash
+if(NOT DEFINED ENV{AMENT_PREFIX_PATH})
+  message(WARNING
+    "ROS 2 environment not sourced. Run: source /opt/ros/humble/setup.bash")
 endif()
 
-add_library(mcap INTERFACE)
-target_include_directories(mcap INTERFACE "${mcap_SOURCE_DIR}/cpp/mcap/include")
+find_package(ament_cmake REQUIRED)
+find_package(rosbag2_cpp REQUIRED)
+find_package(rosbag2_storage REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(can_msgs REQUIRED)
+find_package(vehicle_can_decoder REQUIRED)
 
-# Optional compression support for reading lz4 / zstd compressed MCAP files.
-# Install system packages to enable: sudo apt install liblz4-dev libzstd-dev
-find_library(LZ4_LIB  NAMES lz4)
-find_path(LZ4_INC     NAMES lz4.h)
-if(LZ4_LIB AND LZ4_INC)
-  target_compile_definitions(mcap INTERFACE MCAP_COMPRESSION_LZ4)
-  target_link_libraries(mcap INTERFACE ${LZ4_LIB})
-  target_include_directories(mcap INTERFACE ${LZ4_INC})
-  message(STATUS "mcap_converter: LZ4 compression enabled")
-else()
-  message(STATUS "mcap_converter: LZ4 not found -- lz4-compressed bags unsupported")
-endif()
-
-find_library(ZSTD_LIB NAMES zstd)
-find_path(ZSTD_INC    NAMES zstd.h)
-if(ZSTD_LIB AND ZSTD_INC)
-  target_compile_definitions(mcap INTERFACE MCAP_COMPRESSION_ZSTD)
-  target_link_libraries(mcap INTERFACE ${ZSTD_LIB})
-  target_include_directories(mcap INTERFACE ${ZSTD_INC})
-  message(STATUS "mcap_converter: ZSTD compression enabled")
-else()
-  message(STATUS "mcap_converter: ZSTD not found -- zstd-compressed bags unsupported")
+if(NOT vehicle_can_decoder_FOUND)
+  message(FATAL_ERROR
+    "vehicle_can_decoder not found. Build order:\n"
+    "  colcon build --packages-select vehicle_can_decoder\n"
+    "  source install/setup.bash")
 endif()
 
 # ── dbcppp (same pin as the main package) ────────────────────────────────────
@@ -96,8 +78,8 @@ if(NOT TARGET yaml-cpp::yaml-cpp)
 endif()
 
 # ── vehicle_can_decoder non-ROS core (compiled inline) ────────────────────────
-# Only the three ROS-independent components are compiled here.
-# VehicleCanNode (rclcpp) is intentionally excluded.
+# DbcDecoder / SignalRouter / SignalTransformer have no ROS 2 dependency and are
+# compiled directly from source. VehicleCanNode (rclcpp) is intentionally excluded.
 add_library(vcd_core STATIC
   ${VCD_ROOT}/src/dbc_decoder.cpp
   ${VCD_ROOT}/src/signal_transformer.cpp
@@ -111,8 +93,14 @@ target_compile_options(vcd_core PRIVATE $<$<CXX_COMPILER_ID:GNU>:-O2>)
 add_executable(mcap_converter src/mcap_converter.cpp)
 target_link_libraries(mcap_converter
   vcd_core
-  mcap
   yaml-cpp::yaml-cpp
+)
+ament_target_dependencies(mcap_converter
+  rosbag2_cpp
+  rosbag2_storage
+  rclcpp
+  can_msgs
+  vehicle_can_decoder
 )
 
 # ── Install ───────────────────────────────────────────────────────────────────

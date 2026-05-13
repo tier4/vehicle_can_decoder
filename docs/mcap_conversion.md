@@ -1,11 +1,23 @@
-# Offline MCAP Conversion (Building a Converter Tool)
+# Offline Bag Conversion (Building a Converter Tool)
 
-This document describes how to build a standalone tool that converts an MCAP file containing
-raw CAN frames (`can_msgs/Frame`) into a new MCAP file containing the abstracted vehicle
-signal topics (`vehicle_can_decoder/msg/SignalGroup`), without a running ROS runtime.
+This document describes how to build a standalone tool that converts a ROS 2 bag containing
+raw CAN frames (`can_msgs/Frame`) into a new bag containing the abstracted vehicle signal
+topics (`vehicle_can_decoder/msg/SignalGroup`).
 
-The tool lives at `tools/mcap_converter/` and has **no ROS 2 installation dependency** — it
-uses the Foxglove C++ MCAP library directly and implements CDR serialization inline.
+The tool lives at `tools/mcap_converter/` and **requires ROS 2 Humble or later** — it uses
+`rosbag2_cpp` for reading and writing bags and `rclcpp` serialization for CDR encoding.
+
+## Supported Formats
+
+`rosbag2_cpp::Writer` always creates a directory bag. The storage format (mcap or sqlite3)
+is matched to the input bag.
+
+| Format                    | Input | Output                    |
+| ------------------------- | ----- | ------------------------- |
+| MCAP directory            | ✓     | ✓                         |
+| MCAP single-file (.mcap)  | ✓     | directory (mcap storage)  |
+| sqlite3 directory         | ✓     | ✓                         |
+| sqlite3 single-file (.db3)| ✓     | directory (sqlite3 storage)|
 
 ## Core Library Reusability
 
@@ -22,10 +34,11 @@ linked from any standalone executable.
 ## Conversion Pipeline
 
 ```text
-can_msgs/Frame (from MCAP)
-    │  inline CDR deserialize (cdr::Reader)
+can_msgs/Frame (from rosbag2_cpp::Reader)
+    │  rclcpp::Serialization<can_msgs::msg::Frame>::deserialize_message()
+    │  [zero-copy: wraps bag_msg->serialized_data buffer directly]
     ▼
-CanFrameMsg { sec, nanosec, id, dlc, data[8] }
+can_msgs::msg::Frame { header.stamp, id, dlc, data[8] }
     │  DbcDecoder::decode()
     ▼
 vector<RawSignal> { name, value, can_id }
@@ -34,17 +47,18 @@ vector<RawSignal> { name, value, can_id }
     │  or SignalRouter::domain_for_id()   — fallback CAN-ID-based routing
     │  SignalTransformer::transform()
     ▼
-per-domain SignalGroup { header, domain, Signal[] }
-    │  inline CDR serialize (cdr::Writer)
+per-domain vehicle_can_decoder::msg::SignalGroup
+    │  rclcpp::Serialization<SignalGroup>::serialize_message()
+    │  rcutils_uint8_array_init() deep-copy into owned buffer
     ▼
-output MCAP (original logTime / publishTime preserved)
+rosbag2_cpp::Writer::write()
 
-Non-CAN topics → copied verbatim (schemas and channels duplicated lazily)
+Non-CAN topics → writer->write(bag_msg) verbatim (shared_ptr passthrough)
 ```
 
 ## Message Definitions
 
-### Input — `can_msgs/msg/Frame` (deserialized inline)
+### Input — `can_msgs/msg/Frame`
 
 ```text
 std_msgs/Header header   # stamp: {int32 sec, uint32 nanosec}, string frame_id
@@ -56,7 +70,7 @@ uint8            dlc
 uint8[8]         data
 ```
 
-### Output — `vehicle_can_decoder/msg/SignalGroup` (serialized inline)
+### Output — `vehicle_can_decoder/msg/SignalGroup`
 
 ```text
 std_msgs/Header                  header
@@ -76,37 +90,48 @@ Signal names are **not embedded in each message** at runtime; they are looked up
 
 ## Build
 
-The tool uses **plain CMake** (no ament / colcon). Dependencies are fetched at build time.
+### Prerequisites
 
 ```bash
+sudo apt install \
+  ros-humble-rosbag2-cpp \
+  ros-humble-rosbag2-storage-mcap \
+  ros-humble-rosbag2-storage-sqlite3 \
+  ros-humble-rclcpp \
+  ros-humble-can-msgs
+```
+
+### Build order
+
+```bash
+source /opt/ros/humble/setup.bash
+colcon build --packages-select vehicle_can_decoder
+source install/setup.bash
+
 cd tools/mcap_converter
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 ```
 
-### Optional compression support
-
-Install system libraries before configuring to enable reading lz4/zstd-compressed bags:
-
-```bash
-sudo apt install liblz4-dev libzstd-dev
-```
-
-CMake detects them automatically and sets `MCAP_COMPRESSION_LZ4` /
-`MCAP_COMPRESSION_ZSTD`.
+`vehicle_can_decoder` must be built and sourced before configuring `tools/mcap_converter`
+because the CMakeLists.txt calls `find_package(vehicle_can_decoder REQUIRED)` to resolve
+message headers and typesupport.
 
 ## Usage
 
 ```bash
 ./build/mcap_converter \
-  --input   <in.mcap>      \
-  --output  <out.mcap>     \
+  --input   <bag_or_dir>   \
+  --output  <out_dir>      \
   --dbc     <vehicle.dbc>  \
   --config  <vehicle.yaml> [--config <schema.yaml> ...]
 ```
 
 `--config` is repeatable; later files overwrite earlier keys. All YAML files are merged
 into a single parameter map before the pipeline is configured.
+
+The output is always a directory. If `--output` already exists the converter exits with an
+error; remove the path first or choose a different name.
 
 ## YAML Config Structure
 
@@ -165,15 +190,16 @@ signal_id_names: [VehicleSpeed, SteeringAngle, BrakePress]
 
 `name_id` in each `Signal` is the 1-based index into this list (0 = name not in table).
 
-## MCAP I/O
+## Bag I/O
 
-The tool uses the **Foxglove C++ MCAP library** (`mcap/reader.hpp`, `mcap/writer.hpp`),
-fetched at build time from `https://github.com/foxglove/mcap.git` at tag
-`releases/cpp/v1.4.1`. No `rclcpp::init` or ROS 2 installation is required.
+The tool uses **`rosbag2_cpp`** (`rosbag2_cpp::Reader` / `rosbag2_cpp::Writer`) for bag
+reading and writing, and **`rclcpp::Serialization<T>`** for CDR encoding and decoding.
+No hand-rolled serialization — message layout changes in upstream packages are handled
+automatically by the generated typesupport.
 
-CDR serialization is implemented inline (`cdr::Reader` / `cdr::Writer` in
-`src/mcap_converter.cpp`) — the 4-byte CDR-LE encapsulation header is handled, and each
-field is aligned to its natural size boundary.
+Message schema bytes are **not embedded** in the output bag. Foxglove Studio cannot display
+messages in offline mode without a running ROS 2 instance; use `ros2 bag play` with a
+Foxglove live connection instead.
 
 ## CMakeLists.txt for the Converter Executable
 
@@ -186,23 +212,21 @@ get_filename_component(VCD_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 
 include(FetchContent)
 
-# Foxglove MCAP (header-only, no ROS 2 dependency)
-FetchContent_Declare(mcap
-  GIT_REPOSITORY https://github.com/foxglove/mcap.git
-  GIT_TAG        releases/cpp/v1.4.1
-  GIT_SHALLOW    TRUE)
-FetchContent_GetProperties(mcap)
-if(NOT mcap_POPULATED)
-  FetchContent_Populate(mcap)
-endif()
-add_library(mcap INTERFACE)
-target_include_directories(mcap INTERFACE "${mcap_SOURCE_DIR}/cpp/mcap/include")
-
 # dbcppp and exprtk (same pins as the main package)
 FetchContent_Declare(dbcppp ...)
 FetchContent_Declare(exprtk ...)
 
+find_package(ament_cmake REQUIRED)
+find_package(rosbag2_cpp REQUIRED)
+find_package(rosbag2_storage REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(can_msgs REQUIRED)
+find_package(vehicle_can_decoder REQUIRED)
+
 find_package(yaml-cpp REQUIRED)
+if(NOT TARGET yaml-cpp::yaml-cpp)
+  add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
+endif()
 
 # Compile only the three ROS-independent source files from the main package
 add_library(vcd_core STATIC
@@ -213,7 +237,9 @@ target_include_directories(vcd_core PUBLIC ${VCD_ROOT}/include)
 target_link_libraries(vcd_core PRIVATE libdbcppp exprtk)
 
 add_executable(mcap_converter src/mcap_converter.cpp)
-target_link_libraries(mcap_converter vcd_core mcap yaml-cpp::yaml-cpp)
+target_link_libraries(mcap_converter vcd_core yaml-cpp::yaml-cpp)
+ament_target_dependencies(mcap_converter
+  rosbag2_cpp rosbag2_storage rclcpp can_msgs vehicle_can_decoder)
 ```
 
 ## Using the Library in a Custom Tool
@@ -385,6 +411,9 @@ add_executable(my_tool src/my_tool.cpp)
 target_link_libraries(my_tool vcd_core yaml-cpp::yaml-cpp)
 ```
 
+If your tool also reads or writes ROS 2 bags, use `rosbag2_cpp` instead of the foxglove
+mcap library — see `tools/mcap_converter` for the pattern.
+
 **ROS 2 package (ament)** — link against the installed library:
 
 ```cmake
@@ -402,10 +431,10 @@ target_link_libraries(my_tool yaml-cpp::yaml-cpp)
 | -------------------------- | --------------------------------------------------- |
 | Input CAN frame time       | `can_msgs/Frame` header stamp (`sec` + `nanosec`)   |
 | `SignalGroup.header.stamp` | Set from the same stamp — do **not** use wall clock |
-| MCAP `logTime`             | Copied from the input message's `msg.logTime`       |
-| MCAP `publishTime`         | Copied from the input message's `msg.publishTime`   |
+| `time_stamp` in output bag | Set from the CAN frame header stamp (nanoseconds)   |
+| `publishTime`              | Not preserved — `rosbag2_cpp` has a single `time_stamp` field |
 
-This ensures the output MCAP is fully reproducible regardless of the processing environment
+This ensures the output bag is fully reproducible regardless of the processing environment
 or machine speed.
 
 ## Console Output
@@ -413,8 +442,7 @@ or machine speed.
 The converter prints a summary on completion:
 
 ```text
-DBC: vehicle.dbc (42 messages)
-Converting: input.mcap → output.mcap
+Converting: input_bag/ → out/
 Done.
   CAN frames read:   12345
   Decoded:           11800

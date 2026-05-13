@@ -1,271 +1,49 @@
 // Copyright 2026 TIER IV, Inc.
 //
-// Offline MCAP conversion tool — fully standalone, no ROS 2 installation required.
-//
-// Reads can_msgs/Frame messages from an input MCAP and writes
-// vehicle_can_decoder/SignalGroup messages to an output MCAP by running the
+// Offline bag conversion tool. Reads can_msgs/Frame messages from an input
+// rosbag2 bag (MCAP or sqlite3, directory or single-file) and writes
+// vehicle_can_decoder/SignalGroup messages to an output bag by running the
 // same decode → alias → transform pipeline as the live ROS 2 node.
 //
-// CDR serialization for both message types is implemented inline.
-// MCAP file I/O uses the foxglove C++ library (fetched at build time).
-//
-// Build:
+// Requires ROS 2 Humble or later. Build:
+//   source /opt/ros/humble/setup.bash
+//   colcon build --packages-select vehicle_can_decoder
+//   source install/setup.bash
 //   cd tools/mcap_converter
 //   cmake -B build -DCMAKE_BUILD_TYPE=Release
 //   cmake --build build -j$(nproc)
 //
 // Usage:
 //   ./build/mcap_converter \
-//     --input  <in.mcap>      \
-//     --output <out.mcap>     \
+//     --input  <bag_or_dir>   \
+//     --output <out_dir>      \
 //     --dbc    <vehicle.dbc>  \
 //     --config <vehicle.yaml> [--config <schema.yaml> ...]
 
-#define MCAP_IMPLEMENTATION
-#include "mcap/reader.hpp"
-#include "mcap/writer.hpp"
 #include "vehicle_can_decoder/dbc_decoder.hpp"
 #include "vehicle_can_decoder/signal_router.hpp"
 #include "vehicle_can_decoder/signal_transformer.hpp"
+
+#include <can_msgs/msg/frame.hpp>
+#include <rclcpp/serialization.hpp>
+#include <rosbag2_cpp/reader.hpp>
+#include <rosbag2_cpp/writer.hpp>
+#include <rosbag2_storage/serialized_bag_message.hpp>
+#include <rosbag2_storage/storage_options.hpp>
+#include <vehicle_can_decoder/msg/signal.hpp>
+#include <vehicle_can_decoder/msg/signal_group.hpp>
 
 #include <yaml-cpp/yaml.h>
 
 #include <array>
 #include <cstdint>
 #include <cstring>
-#include <fstream>
+#include <filesystem>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
-
-// ── Minimal CDR reader / writer ───────────────────────────────────────────────
-//
-// Implements the subset of CDR (Common Data Representation, little-endian)
-// needed to deserialize can_msgs/Frame and serialize
-// vehicle_can_decoder/SignalGroup without linking against the ROS 2 message
-// typesupport libraries.
-//
-// CDR wire format for ROS 2:
-//   Bytes 0-3: encapsulation header  { 0x00, 0x01, 0x00, 0x00 } (CDR-LE)
-//   Bytes 4-N: serialized fields, each aligned to its natural size
-//   Strings:   uint32 length (includes NUL) then char bytes
-
-namespace cdr
-{
-
-class Reader
-{
-public:
-  Reader(const uint8_t * buf, size_t size)
-  : buf_(buf), size_(size), pos_(4)  // skip the 4-byte encapsulation header
-  {
-  }
-
-  uint8_t u8() { return buf_[pos_++]; }
-
-  int32_t i32()
-  {
-    align(4);
-    int32_t v;
-    std::memcpy(&v, buf_ + pos_, 4);
-    pos_ += 4;
-    return v;
-  }
-
-  uint32_t u32()
-  {
-    align(4);
-    uint32_t v;
-    std::memcpy(&v, buf_ + pos_, 4);
-    pos_ += 4;
-    return v;
-  }
-
-  uint16_t u16()
-  {
-    align(2);
-    uint16_t v;
-    std::memcpy(&v, buf_ + pos_, 2);
-    pos_ += 2;
-    return v;
-  }
-
-  std::string str()
-  {
-    const uint32_t len = u32();
-    if (len == 0) return {};
-    std::string s(reinterpret_cast<const char *>(buf_ + pos_), len - 1);
-    pos_ += len;
-    return s;
-  }
-
-  bool ok() const { return pos_ <= size_; }
-
-private:
-  void align(size_t n) { pos_ = (pos_ + n - 1) & ~(n - 1); }
-
-  const uint8_t * buf_;
-  size_t size_;
-  size_t pos_;
-};
-
-class Writer
-{
-public:
-  Writer()
-  {
-    buf_ = {0x00, 0x01, 0x00, 0x00};  // CDR little-endian encapsulation header
-  }
-
-  void u8(uint8_t v) { buf_.push_back(v); }
-
-  void i32(int32_t v)
-  {
-    align(4);
-    const size_t off = buf_.size();
-    buf_.resize(off + 4);
-    std::memcpy(buf_.data() + off, &v, 4);
-  }
-
-  void u32(uint32_t v)
-  {
-    align(4);
-    const size_t off = buf_.size();
-    buf_.resize(off + 4);
-    std::memcpy(buf_.data() + off, &v, 4);
-  }
-
-  void u16(uint16_t v)
-  {
-    align(2);
-    const size_t off = buf_.size();
-    buf_.resize(off + 2);
-    std::memcpy(buf_.data() + off, &v, 2);
-  }
-
-  void f32(float v)
-  {
-    align(4);
-    const size_t off = buf_.size();
-    buf_.resize(off + 4);
-    std::memcpy(buf_.data() + off, &v, 4);
-  }
-
-  void str(const std::string & s)
-  {
-    u32(static_cast<uint32_t>(s.size() + 1));
-    for (char c : s) buf_.push_back(static_cast<uint8_t>(c));
-    buf_.push_back(0);
-  }
-
-  const std::vector<uint8_t> & data() const { return buf_; }
-
-private:
-  void align(size_t n)
-  {
-    while (buf_.size() % n) buf_.push_back(0);
-  }
-
-  std::vector<uint8_t> buf_;
-};
-
-}  // namespace cdr
-
-// ── can_msgs/Frame CDR deserialization ───────────────────────────────────────
-//
-// Message definition (can_msgs/msg/Frame):
-//   std_msgs/Header header   (stamp: {int32 sec, uint32 nanosec}, string frame_id)
-//   uint32           id
-//   bool             is_rtr
-//   bool             is_extended
-//   bool             is_error
-//   uint8            dlc
-//   uint8[8]         data
-
-struct CanFrameMsg
-{
-  int32_t sec{};
-  uint32_t nanosec{};
-  uint32_t id{};
-  uint8_t dlc{};
-  std::array<uint8_t, 8> data{};
-};
-
-static CanFrameMsg decode_can_frame(const uint8_t * buf, size_t size)
-{
-  cdr::Reader r(buf, size);
-  CanFrameMsg f;
-  f.sec = r.i32();
-  f.nanosec = r.u32();
-  r.str();  // frame_id (unused)
-  f.id = r.u32();
-  r.u8();  // is_rtr
-  r.u8();  // is_extended
-  r.u8();  // is_error
-  f.dlc = r.u8();
-  for (auto & b : f.data) b = r.u8();
-  return f;
-}
-
-// ── vehicle_can_decoder/SignalGroup CDR serialization ────────────────────────
-//
-// Message definition (vehicle_can_decoder/msg/SignalGroup):
-//   std_msgs/Header                  header
-//   string                           domain
-//   vehicle_can_decoder/Signal[]     signals
-//
-// vehicle_can_decoder/Signal:
-//   uint16  name_id
-//   float32 value
-
-struct SignalEntry
-{
-  uint16_t name_id{};
-  float value{};
-};
-
-static std::vector<uint8_t> encode_signal_group(
-  int32_t sec, uint32_t nanosec, const std::string & domain,
-  const std::vector<SignalEntry> & signals)
-{
-  cdr::Writer w;
-  w.i32(sec);
-  w.u32(nanosec);
-  w.str("");  // frame_id
-  w.str(domain);
-  w.u32(static_cast<uint32_t>(signals.size()));
-  for (const auto & s : signals) {
-    w.u16(s.name_id);
-    w.f32(s.value);
-  }
-  return w.data();
-}
-
-// ── Schema definition embedded as a string ───────────────────────────────────
-//
-// ros2msg encoding: the full message definition including all dependencies.
-
-static const char kSignalGroupMsgDef[] =
-  "std_msgs/Header header\n"
-  "string domain\n"
-  "vehicle_can_decoder/Signal[] signals\n"
-  "\n"
-  "================================================================================\n"
-  "MSG: std_msgs/Header\n"
-  "builtin_interfaces/Time stamp\n"
-  "string frame_id\n"
-  "\n"
-  "================================================================================\n"
-  "MSG: builtin_interfaces/Time\n"
-  "int32 sec\n"
-  "uint32 nanosec\n"
-  "\n"
-  "================================================================================\n"
-  "MSG: vehicle_can_decoder/Signal\n"
-  "uint16 name_id\n"
-  "float32 value\n";
 
 // ── YAML helpers ──────────────────────────────────────────────────────────────
 //
@@ -372,7 +150,7 @@ struct Config
   std::unordered_map<std::string, std::string> schema_domain_topics;
 
   // Signal ID table (from signal_id_names in vehicle_schema.yaml).
-  // Used to populate SignalEntry.name_id; 0 when not configured.
+  // Used to populate Signal.name_id; 0 when not configured.
   std::unordered_map<std::string, uint16_t> signal_name_to_id;
 };
 
@@ -430,8 +208,8 @@ struct Args
 void print_usage(const char * prog)
 {
   std::cerr << "Usage: " << prog << " \\\n"
-            << "  --input   <in.mcap>      Input MCAP file\n"
-            << "  --output  <out.mcap>     Output MCAP file\n"
+            << "  --input   <bag_or_dir>   Input bag (MCAP or sqlite3, dir or file)\n"
+            << "  --output  <out_dir>      Output directory\n"
             << "  --dbc     <vehicle.dbc>  DBC file\n"
             << "  --config  <config.yaml>  Vehicle config YAML (repeatable)\n";
 }
@@ -509,62 +287,62 @@ int main(int argc, char * argv[])
     domain_to_topic[name] = topic;
   }
 
-  // ── Open input MCAP ────────────────────────────────────────────────────────
-  std::ifstream infile(args.input, std::ios::binary);
-  if (!infile.is_open()) {
-    std::cerr << "Cannot open input: " << args.input << "\n";
+  // ── Check output does not already exist ───────────────────────────────────
+  if (std::filesystem::exists(args.output)) {
+    std::cerr << "Output already exists: " << args.output
+              << ". Remove it first or choose a different output path.\n";
     return 1;
   }
-  mcap::FileStreamReader fileReader(infile);
-  mcap::McapReader reader;
-  {
-    const auto status = reader.open(fileReader);
-    if (!status.ok()) {
-      std::cerr << "Failed to open MCAP: " << status.message << "\n";
-      return 1;
-    }
+
+  // ── Open input bag ─────────────────────────────────────────────────────────
+  rosbag2_storage::StorageOptions input_opts;
+  input_opts.uri = args.input;
+  auto reader = std::make_unique<rosbag2_cpp::Reader>();
+  try {
+    reader->open(input_opts);
+  } catch (const std::exception & e) {
+    std::cerr << "Failed to open input bag: " << e.what() << "\n";
+    return 1;
   }
 
-  // ── Open output MCAP ───────────────────────────────────────────────────────
-  mcap::FileWriter fileWriter;
-  {
-    const auto status = fileWriter.open(args.output);
-    if (!status.ok()) {
-      std::cerr << "Failed to open output: " << status.message << "\n";
-      return 1;
-    }
-  }
-  mcap::McapWriter writer;
-  {
-    mcap::McapWriterOptions opts("ros2");
-    writer.open(fileWriter, opts);
+  // Match output storage type to input (mcap or sqlite3).
+  // rosbag2_cpp::Writer always creates a directory regardless of URI.
+  const std::string storage_id = reader->get_metadata().storage_identifier;
+
+  // ── Open output bag ────────────────────────────────────────────────────────
+  rosbag2_storage::StorageOptions output_opts;
+  output_opts.uri = args.output;
+  output_opts.storage_id = storage_id;
+  auto writer = std::make_unique<rosbag2_cpp::Writer>();
+  try {
+    writer->open(output_opts);
+  } catch (const std::exception & e) {
+    std::cerr << "Failed to open output bag: " << e.what() << "\n";
+    return 1;
   }
 
-  // ── Register SignalGroup schema ────────────────────────────────────────────
-  mcap::Schema signalGroupSchema;
-  signalGroupSchema.name = "vehicle_can_decoder/msg/SignalGroup";
-  signalGroupSchema.encoding = "ros2msg";
-  {
-    const auto * begin = reinterpret_cast<const std::byte *>(kSignalGroupMsgDef);
-    const auto * end = begin + (sizeof(kSignalGroupMsgDef) - 1);  // exclude NUL
-    signalGroupSchema.data = mcap::ByteArray(begin, end);
+  // ── Pre-register all passthrough topics ───────────────────────────────────
+  for (const auto & topic_meta : reader->get_all_topics_and_types()) {
+    if (topic_meta.name == cfg.can_topic) continue;
+    writer->create_topic(topic_meta);
   }
-  writer.addSchema(signalGroupSchema);
 
-  // ── Register one output channel per domain topic ───────────────────────────
-  std::unordered_map<std::string, mcap::ChannelId> domain_to_channel;
+  // ── Register one output topic per domain ──────────────────────────────────
   for (const auto & [domain, topic] : domain_to_topic) {
-    mcap::Channel channel;
-    channel.topic = topic;
-    channel.messageEncoding = "cdr";
-    channel.schemaId = signalGroupSchema.id;
-    writer.addChannel(channel);
-    domain_to_channel[domain] = channel.id;
+    rosbag2_storage::TopicMetadata sig_meta;
+    sig_meta.name = topic;
+    sig_meta.type = "vehicle_can_decoder/msg/SignalGroup";
+    sig_meta.serialization_format = "cdr";
+    writer->create_topic(sig_meta);
   }
 
-  // ── Passthrough channel tracking (lazy creation on first encounter) ────────
-  std::unordered_map<mcap::ChannelId, mcap::ChannelId> in_to_out_channel;
-  std::unordered_map<mcap::SchemaId, mcap::SchemaId> in_to_out_schema;
+  // ── Declare serializers once outside the loop ─────────────────────────────
+  rclcpp::Serialization<can_msgs::msg::Frame> frame_deserializer;
+  rclcpp::Serialization<vehicle_can_decoder::msg::SignalGroup> sg_serializer;
+
+  // groups is declared outside the loop and cleared per CAN frame to avoid
+  // per-frame heap allocation.
+  std::unordered_map<std::string, vehicle_can_decoder::msg::SignalGroup> groups;
 
   // ── Conversion loop ────────────────────────────────────────────────────────
   uint64_t frames_in = 0, frames_decoded = 0, frames_unknown = 0;
@@ -572,123 +350,111 @@ int main(int argc, char * argv[])
 
   std::cout << "Converting: " << args.input << " → " << args.output << "\n";
 
-  auto view = reader.readMessages();
-  for (auto it = view.begin(); it != view.end(); ++it) {
-    const mcap::MessageView & mv = *it;
-    const mcap::Message & msg = mv.message;
-    const std::string & topic = mv.channel->topic;
+  try {
+    while (reader->has_next()) {
+      auto bag_msg = reader->read_next();
 
-    // ── Non-CAN topics: pass through verbatim ─────────────────────────────
-    if (topic != cfg.can_topic) {
-      const auto ch_it = in_to_out_channel.find(msg.channelId);
-      mcap::ChannelId out_channel_id;
+      // ── Non-CAN topics: pass through verbatim ───────────────────────────
+      if (bag_msg->topic_name != cfg.can_topic) {
+        writer->write(bag_msg);
+        ++passthrough;
+        continue;
+      }
 
-      if (ch_it == in_to_out_channel.end()) {
-        // Create output schema for this input schema (if not yet mapped).
-        mcap::SchemaId out_schema_id = 0;
-        if (mv.schema && !mv.schema->name.empty()) {
-          const auto sc_it = in_to_out_schema.find(mv.channel->schemaId);
-          if (sc_it == in_to_out_schema.end()) {
-            mcap::Schema out_schema;
-            out_schema.name = mv.schema->name;
-            out_schema.encoding = mv.schema->encoding;
-            out_schema.data = mv.schema->data;
-            writer.addSchema(out_schema);
-            in_to_out_schema[mv.channel->schemaId] = out_schema.id;
-            out_schema_id = out_schema.id;
-          } else {
-            out_schema_id = sc_it->second;
-          }
+      ++frames_in;
+
+      // ── Deserialize can_msgs/Frame ────────────────────────────────────
+      // Wrap bag_msg buffer directly — zero-copy, no extra allocation.
+      rclcpp::SerializedMessage ser_in(*reinterpret_cast<rcl_serialized_message_t *>(
+        &bag_msg->serialized_data));
+      can_msgs::msg::Frame ros_frame;
+      frame_deserializer.deserialize_message(&ser_in, &ros_frame);
+
+      // ── Decode via DBC ────────────────────────────────────────────────
+      std::array<uint8_t, 8> data_arr{};
+      std::copy_n(ros_frame.data.begin(), ros_frame.dlc, data_arr.begin());
+      const auto decoded = decoder.decode(ros_frame.id, data_arr, ros_frame.dlc);
+      if (!decoded) {
+        ++frames_unknown;
+        continue;
+      }
+      ++frames_decoded;
+
+      // ── Build per-domain SignalGroups ─────────────────────────────────
+      groups.clear();
+
+      for (const auto & raw_sig : *decoded) {
+        // Compound key "CAN{id}_{signal}" tried first to disambiguate signals
+        // that share the same name across different CAN messages.
+        const std::string compound =
+          "CAN" + std::to_string(ros_frame.id) + "_" + raw_sig.name;
+        const std::string & compound_alias = router.apply_alias(compound);
+        const std::string & name =
+          (compound_alias != compound) ? compound_alias : router.apply_alias(raw_sig.name);
+
+        // Schema-based routing takes precedence over CAN-ID-based routing.
+        std::string domain;
+        if (!cfg.signal_to_domain.empty()) {
+          const auto domain_it = cfg.signal_to_domain.find(name);
+          domain = (domain_it != cfg.signal_to_domain.end()) ? domain_it->second
+                                                             : SignalRouter::kUnassignedDomain;
+        } else {
+          domain = router.domain_for_id(ros_frame.id);
+        }
+        if (domain == SignalRouter::kUnassignedDomain) continue;
+
+        const auto tr = transformer.transform(name, raw_sig.value);
+
+        auto & sg = groups[domain];
+        if (sg.domain.empty()) {
+          sg.header.stamp.sec = ros_frame.header.stamp.sec;
+          sg.header.stamp.nanosec = ros_frame.header.stamp.nanosec;
+          sg.domain = domain;
         }
 
-        mcap::Channel out_channel;
-        out_channel.topic = topic;
-        out_channel.messageEncoding = mv.channel->messageEncoding;
-        out_channel.schemaId = out_schema_id;
-        out_channel.metadata = mv.channel->metadata;
-        writer.addChannel(out_channel);
-        in_to_out_channel[msg.channelId] = out_channel.id;
-        out_channel_id = out_channel.id;
-      } else {
-        out_channel_id = ch_it->second;
-      }
-
-      mcap::Message out_msg = msg;
-      out_msg.channelId = out_channel_id;
-      (void)writer.write(out_msg);
-      ++passthrough;
-      continue;
-    }
-
-    ++frames_in;
-
-    // ── Deserialize can_msgs/Frame from raw CDR bytes ──────────────────────
-    const CanFrameMsg can_frame = decode_can_frame(
-      reinterpret_cast<const uint8_t *>(msg.data), static_cast<size_t>(msg.dataSize));
-
-    // ── Decode via DBC ─────────────────────────────────────────────────────
-    const auto decoded = decoder.decode(can_frame.id, can_frame.data, can_frame.dlc);
-    if (!decoded) {
-      ++frames_unknown;
-      continue;
-    }
-    ++frames_decoded;
-
-    // ── Build per-domain SignalGroups ──────────────────────────────────────
-    std::unordered_map<std::string, std::vector<SignalEntry>> groups;
-
-    for (const auto & raw_sig : *decoded) {
-      // Compound key "CAN{id}_{signal}" tried first to disambiguate signals
-      // that share the same name across different CAN messages.
-      const std::string compound = "CAN" + std::to_string(can_frame.id) + "_" + raw_sig.name;
-      const std::string & compound_alias = router.apply_alias(compound);
-      const std::string & name =
-        (compound_alias != compound) ? compound_alias : router.apply_alias(raw_sig.name);
-
-      // Schema-based routing takes precedence over CAN-ID-based routing.
-      std::string domain;
-      if (!cfg.signal_to_domain.empty()) {
-        const auto domain_it = cfg.signal_to_domain.find(name);
-        domain = (domain_it != cfg.signal_to_domain.end()) ? domain_it->second
-                                                           : SignalRouter::kUnassignedDomain;
-      } else {
-        domain = router.domain_for_id(can_frame.id);
-      }
-      if (domain == SignalRouter::kUnassignedDomain) continue;
-
-      const auto tr = transformer.transform(name, raw_sig.value);
-
-      SignalEntry sig;
-      {
+        vehicle_can_decoder::msg::Signal s;
         const auto id_it = cfg.signal_name_to_id.find(name);
-        sig.name_id = (id_it != cfg.signal_name_to_id.end()) ? id_it->second : 0;
+        s.name_id = (id_it != cfg.signal_name_to_id.end()) ? id_it->second : 0;
+        s.value = static_cast<float>(tr.value);
+        sg.signals.push_back(s);
       }
-      sig.value = static_cast<float>(tr.value);
-      groups[domain].push_back(sig);
+
+      // ── Serialize and write one SignalGroup per domain ────────────────
+      for (auto & [domain, sg] : groups) {
+        const auto topic_it = domain_to_topic.find(domain);
+        if (topic_it == domain_to_topic.end()) continue;
+
+        rclcpp::SerializedMessage ser_out;
+        sg_serializer.serialize_message(&sg, &ser_out);
+
+        // Deep-copy into an owned buffer so the writer can safely call
+        // rcutils_uint8_array_fini() on out_msg without touching ser_out.
+        auto out_msg = std::make_shared<rosbag2_storage::SerializedBagMessage>();
+        out_msg->topic_name = topic_it->second;
+        out_msg->time_stamp =
+          static_cast<int64_t>(ros_frame.header.stamp.sec) * 1'000'000'000LL
+          + ros_frame.header.stamp.nanosec;
+
+        const auto & rcl_buf = ser_out.get_rcl_serialized_message();
+        const auto ret = rcutils_uint8_array_init(
+          &out_msg->serialized_data, rcl_buf.buffer_length,
+          &rcutils_get_default_allocator());
+        if (ret != RCUTILS_RET_OK || out_msg->serialized_data.buffer == nullptr) {
+          std::cerr << "OOM: failed to allocate output message buffer\n";
+          return 1;
+        }
+        std::memcpy(
+          out_msg->serialized_data.buffer, rcl_buf.buffer, rcl_buf.buffer_length);
+        out_msg->serialized_data.buffer_length = rcl_buf.buffer_length;
+
+        writer->write(out_msg);
+        ++groups_out;
+      }
     }
-
-    // ── Serialize and write one SignalGroup per domain ────────────────────
-    for (const auto & [domain, signals] : groups) {
-      const auto ch_it = domain_to_channel.find(domain);
-      if (ch_it == domain_to_channel.end()) continue;
-
-      const std::vector<uint8_t> cdr_data =
-        encode_signal_group(can_frame.sec, can_frame.nanosec, domain, signals);
-
-      mcap::Message out_msg;
-      out_msg.channelId = ch_it->second;
-      out_msg.logTime = msg.logTime;
-      out_msg.publishTime = msg.publishTime;
-      out_msg.sequence = 0;
-      out_msg.data = reinterpret_cast<const std::byte *>(cdr_data.data());
-      out_msg.dataSize = cdr_data.size();
-      (void)writer.write(out_msg);
-      ++groups_out;
-    }
+  } catch (const std::exception & e) {
+    std::cerr << "Error during conversion: " << e.what() << "\n";
+    return 1;
   }
-
-  reader.close();
-  writer.close();
 
   // ── Summary ───────────────────────────────────────────────────────────────
   std::cout << "Done.\n"
