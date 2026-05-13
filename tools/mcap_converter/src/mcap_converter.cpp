@@ -27,7 +27,6 @@
 #include <rclcpp/serialization.hpp>
 #include <rosbag2_cpp/reader.hpp>
 #include <rosbag2_cpp/writer.hpp>
-#include <rcutils/types/uint8_array.h>
 #include <rosbag2_storage/serialized_bag_message.hpp>
 #include <rosbag2_storage/storage_options.hpp>
 #include <vehicle_can_decoder/msg/signal.hpp>
@@ -35,6 +34,7 @@
 
 #include <can_msgs/msg/frame.hpp>
 
+#include <rcutils/types/uint8_array.h>
 #include <yaml-cpp/yaml.h>
 
 #include <array>
@@ -452,8 +452,11 @@ int main(int argc, char * argv[])
         }
         std::memcpy(arr->buffer, rcl_buf.buffer, rcl_buf.buffer_length);
         arr->buffer_length = rcl_buf.buffer_length;
-        out_msg->serialized_data = std::shared_ptr<rcutils_uint8_array_t>(
-          arr, [](rcutils_uint8_array_t * p) { rcutils_uint8_array_fini(p); delete p; });
+        out_msg->serialized_data =
+          std::shared_ptr<rcutils_uint8_array_t>(arr, [](rcutils_uint8_array_t * p) {
+            rcutils_uint8_array_fini(p);
+            delete p;
+          });
 
         writer->write(out_msg);
         ++groups_out;
