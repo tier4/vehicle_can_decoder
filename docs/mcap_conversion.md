@@ -12,12 +12,12 @@ The tool lives at `tools/mcap_converter/` and **requires ROS 2 Humble or later**
 `rosbag2_cpp::Writer` always creates a directory bag. The storage format (mcap or sqlite3)
 is matched to the input bag.
 
-| Format                    | Input | Output                    |
-| ------------------------- | ----- | ------------------------- |
-| MCAP directory            | ✓     | ✓                         |
-| MCAP single-file (.mcap)  | ✓     | directory (mcap storage)  |
-| sqlite3 directory         | ✓     | ✓                         |
-| sqlite3 single-file (.db3)| ✓     | directory (sqlite3 storage)|
+| Format                     | Input | Output                      |
+| -------------------------- | ----- | --------------------------- |
+| MCAP directory             | ✓     | ✓                           |
+| MCAP single-file (.mcap)   | ✓     | directory (mcap storage)    |
+| sqlite3 directory          | ✓     | ✓                           |
+| sqlite3 single-file (.db3) | ✓     | directory (sqlite3 storage) |
 
 ## Core Library Reusability
 
@@ -427,11 +427,11 @@ target_link_libraries(my_tool yaml-cpp::yaml-cpp)
 
 ## Timestamp Handling
 
-| Source                     | How to obtain                                       |
-| -------------------------- | --------------------------------------------------- |
-| Input CAN frame time       | `can_msgs/Frame` header stamp (`sec` + `nanosec`)   |
-| `SignalGroup.header.stamp` | Set from the same stamp — do **not** use wall clock |
-| `time_stamp` in output bag | Set from the CAN frame header stamp (nanoseconds)   |
+| Source                     | How to obtain                                                 |
+| -------------------------- | ------------------------------------------------------------- |
+| Input CAN frame time       | `can_msgs/Frame` header stamp (`sec` + `nanosec`)             |
+| `SignalGroup.header.stamp` | Set from the same stamp — do **not** use wall clock           |
+| `time_stamp` in output bag | Set from the CAN frame header stamp (nanoseconds)             |
 | `publishTime`              | Not preserved — `rosbag2_cpp` has a single `time_stamp` field |
 
 This ensures the output bag is fully reproducible regardless of the processing environment

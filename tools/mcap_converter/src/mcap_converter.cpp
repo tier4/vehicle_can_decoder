@@ -24,7 +24,6 @@
 #include "vehicle_can_decoder/signal_router.hpp"
 #include "vehicle_can_decoder/signal_transformer.hpp"
 
-#include <can_msgs/msg/frame.hpp>
 #include <rclcpp/serialization.hpp>
 #include <rosbag2_cpp/reader.hpp>
 #include <rosbag2_cpp/writer.hpp>
@@ -32,6 +31,8 @@
 #include <rosbag2_storage/storage_options.hpp>
 #include <vehicle_can_decoder/msg/signal.hpp>
 #include <vehicle_can_decoder/msg/signal_group.hpp>
+
+#include <can_msgs/msg/frame.hpp>
 
 #include <yaml-cpp/yaml.h>
 
@@ -365,8 +366,8 @@ int main(int argc, char * argv[])
 
       // ── Deserialize can_msgs/Frame ────────────────────────────────────
       // Wrap bag_msg buffer directly — zero-copy, no extra allocation.
-      rclcpp::SerializedMessage ser_in(*reinterpret_cast<rcl_serialized_message_t *>(
-        &bag_msg->serialized_data));
+      rclcpp::SerializedMessage ser_in(
+        *reinterpret_cast<rcl_serialized_message_t *>(&bag_msg->serialized_data));
       can_msgs::msg::Frame ros_frame;
       frame_deserializer.deserialize_message(&ser_in, &ros_frame);
 
@@ -386,8 +387,7 @@ int main(int argc, char * argv[])
       for (const auto & raw_sig : *decoded) {
         // Compound key "CAN{id}_{signal}" tried first to disambiguate signals
         // that share the same name across different CAN messages.
-        const std::string compound =
-          "CAN" + std::to_string(ros_frame.id) + "_" + raw_sig.name;
+        const std::string compound = "CAN" + std::to_string(ros_frame.id) + "_" + raw_sig.name;
         const std::string & compound_alias = router.apply_alias(compound);
         const std::string & name =
           (compound_alias != compound) ? compound_alias : router.apply_alias(raw_sig.name);
@@ -431,20 +431,17 @@ int main(int argc, char * argv[])
         // rcutils_uint8_array_fini() on out_msg without touching ser_out.
         auto out_msg = std::make_shared<rosbag2_storage::SerializedBagMessage>();
         out_msg->topic_name = topic_it->second;
-        out_msg->time_stamp =
-          static_cast<int64_t>(ros_frame.header.stamp.sec) * 1'000'000'000LL
-          + ros_frame.header.stamp.nanosec;
+        out_msg->time_stamp = static_cast<int64_t>(ros_frame.header.stamp.sec) * 1'000'000'000LL +
+                              ros_frame.header.stamp.nanosec;
 
         const auto & rcl_buf = ser_out.get_rcl_serialized_message();
         const auto ret = rcutils_uint8_array_init(
-          &out_msg->serialized_data, rcl_buf.buffer_length,
-          &rcutils_get_default_allocator());
+          &out_msg->serialized_data, rcl_buf.buffer_length, &rcutils_get_default_allocator());
         if (ret != RCUTILS_RET_OK || out_msg->serialized_data.buffer == nullptr) {
           std::cerr << "OOM: failed to allocate output message buffer\n";
           return 1;
         }
-        std::memcpy(
-          out_msg->serialized_data.buffer, rcl_buf.buffer, rcl_buf.buffer_length);
+        std::memcpy(out_msg->serialized_data.buffer, rcl_buf.buffer, rcl_buf.buffer_length);
         out_msg->serialized_data.buffer_length = rcl_buf.buffer_length;
 
         writer->write(out_msg);
