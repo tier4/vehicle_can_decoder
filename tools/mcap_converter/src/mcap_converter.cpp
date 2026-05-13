@@ -27,6 +27,7 @@
 #include <rclcpp/serialization.hpp>
 #include <rosbag2_cpp/reader.hpp>
 #include <rosbag2_cpp/writer.hpp>
+#include <rcutils/types/uint8_array.h>
 #include <rosbag2_storage/serialized_bag_message.hpp>
 #include <rosbag2_storage/storage_options.hpp>
 #include <vehicle_can_decoder/msg/signal.hpp>
@@ -365,9 +366,9 @@ int main(int argc, char * argv[])
       ++frames_in;
 
       // ── Deserialize can_msgs/Frame ────────────────────────────────────
-      // Wrap bag_msg buffer directly — zero-copy, no extra allocation.
-      rclcpp::SerializedMessage ser_in(
-        *reinterpret_cast<rcl_serialized_message_t *>(&bag_msg->serialized_data));
+      // In Humble, serialized_data is shared_ptr<rcutils_uint8_array_t>;
+      // dereference to get the struct and let SerializedMessage deep-copy it.
+      rclcpp::SerializedMessage ser_in(*bag_msg->serialized_data);
       can_msgs::msg::Frame ros_frame;
       frame_deserializer.deserialize_message(&ser_in, &ros_frame);
 
@@ -435,14 +436,24 @@ int main(int argc, char * argv[])
                               ros_frame.header.stamp.nanosec;
 
         const auto & rcl_buf = ser_out.get_rcl_serialized_message();
-        const auto ret = rcutils_uint8_array_init(
-          &out_msg->serialized_data, rcl_buf.buffer_length, &rcutils_get_default_allocator());
-        if (ret != RCUTILS_RET_OK || out_msg->serialized_data.buffer == nullptr) {
+
+        // In Humble, SerializedBagMessage::serialized_data is
+        // shared_ptr<rcutils_uint8_array_t>. Allocate a new array on the
+        // heap, init it, copy the serialized bytes, then assign a
+        // shared_ptr with a custom deleter that calls rcutils_uint8_array_fini.
+        auto * arr = new rcutils_uint8_array_t;
+        *arr = rcutils_get_zero_initialized_uint8_array();
+        auto allocator = rcutils_get_default_allocator();
+        const auto ret = rcutils_uint8_array_init(arr, rcl_buf.buffer_length, &allocator);
+        if (ret != RCUTILS_RET_OK || arr->buffer == nullptr) {
+          delete arr;
           std::cerr << "OOM: failed to allocate output message buffer\n";
           return 1;
         }
-        std::memcpy(out_msg->serialized_data.buffer, rcl_buf.buffer, rcl_buf.buffer_length);
-        out_msg->serialized_data.buffer_length = rcl_buf.buffer_length;
+        std::memcpy(arr->buffer, rcl_buf.buffer, rcl_buf.buffer_length);
+        arr->buffer_length = rcl_buf.buffer_length;
+        out_msg->serialized_data = std::shared_ptr<rcutils_uint8_array_t>(
+          arr, [](rcutils_uint8_array_t * p) { rcutils_uint8_array_fini(p); delete p; });
 
         writer->write(out_msg);
         ++groups_out;
