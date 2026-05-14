@@ -47,6 +47,80 @@
 #include <unordered_map>
 #include <vector>
 
+// ── Manual CDR serializer for SignalGroup ─────────────────────────────────────
+//
+// rclcpp::Serialization<SignalGroup> calls rmw_serialize(), which dlopen()s
+// libvehicle_can_decoder__rosidl_typesupport_introspection_cpp.so at runtime.
+// That library is absent on machines where vehicle_can_decoder is not installed
+// as a ROS package (e.g. the data recording system).  Encoding CDR directly
+// removes this runtime dependency while producing identical bytes on the wire.
+namespace cdr
+{
+
+struct Buffer
+{
+  std::vector<uint8_t> data;
+
+  void align(size_t a)
+  {
+    const size_t r = data.size() % a;
+    if (r) data.insert(data.end(), a - r, 0u);
+  }
+
+  void write_uint16(uint16_t v)
+  {
+    align(2);
+    data.push_back(static_cast<uint8_t>(v & 0xFF));
+    data.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+  }
+
+  void write_int32(int32_t v) { write_uint32(static_cast<uint32_t>(v)); }
+
+  void write_uint32(uint32_t v)
+  {
+    align(4);
+    data.push_back(static_cast<uint8_t>(v & 0xFF));
+    data.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+    data.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
+    data.push_back(static_cast<uint8_t>((v >> 24) & 0xFF));
+  }
+
+  void write_float32(float v)
+  {
+    uint32_t bits;
+    std::memcpy(&bits, &v, sizeof(bits));
+    write_uint32(bits);
+  }
+
+  void write_string(const std::string & s)
+  {
+    write_uint32(static_cast<uint32_t>(s.size() + 1));  // length includes null terminator
+    data.insert(data.end(), s.begin(), s.end());
+    data.push_back(0);  // null terminator
+  }
+};
+
+inline void serialize_signal_group(
+  const vehicle_can_decoder::msg::SignalGroup & sg, Buffer & buf)
+{
+  buf.data.insert(buf.data.end(), {0x00, 0x01, 0x00, 0x00});  // CDR little-endian header
+
+  // std_msgs/Header
+  buf.write_int32(sg.header.stamp.sec);
+  buf.write_uint32(sg.header.stamp.nanosec);
+  buf.write_string(sg.header.frame_id);
+
+  buf.write_string(sg.domain);
+
+  buf.write_uint32(static_cast<uint32_t>(sg.signals.size()));
+  for (const auto & s : sg.signals) {
+    buf.write_uint16(s.name_id);
+    buf.write_float32(s.value);
+  }
+}
+
+}  // namespace cdr
+
 // ── YAML helpers ──────────────────────────────────────────────────────────────
 //
 // The vehicle config YAML uses ROS 2 parameter conventions:
@@ -340,7 +414,6 @@ int main(int argc, char * argv[])
 
   // ── Declare serializers once outside the loop ─────────────────────────────
   rclcpp::Serialization<can_msgs::msg::Frame> frame_deserializer;
-  rclcpp::Serialization<vehicle_can_decoder::msg::SignalGroup> sg_serializer;
 
   // groups is declared outside the loop and cleared per CAN frame to avoid
   // per-frame heap allocation.
@@ -425,17 +498,17 @@ int main(int argc, char * argv[])
         const auto topic_it = domain_to_topic.find(domain);
         if (topic_it == domain_to_topic.end()) continue;
 
-        rclcpp::SerializedMessage ser_out;
-        sg_serializer.serialize_message(&sg, &ser_out);
+        // Encode CDR directly instead of calling rclcpp::Serialization /
+        // rmw_serialize, which would dlopen the introspection type support at
+        // runtime — a library absent on machines without vehicle_can_decoder
+        // installed as a ROS package.
+        cdr::Buffer cdr_buf;
+        cdr::serialize_signal_group(sg, cdr_buf);
 
-        // Deep-copy into an owned buffer so the writer can safely call
-        // rcutils_uint8_array_fini() on out_msg without touching ser_out.
         auto out_msg = std::make_shared<rosbag2_storage::SerializedBagMessage>();
         out_msg->topic_name = topic_it->second;
         out_msg->time_stamp = static_cast<int64_t>(ros_frame.header.stamp.sec) * 1'000'000'000LL +
                               ros_frame.header.stamp.nanosec;
-
-        const auto & rcl_buf = ser_out.get_rcl_serialized_message();
 
         // In Humble, SerializedBagMessage::serialized_data is
         // shared_ptr<rcutils_uint8_array_t>. Allocate a new array on the
@@ -444,14 +517,14 @@ int main(int argc, char * argv[])
         auto * arr = new rcutils_uint8_array_t;
         *arr = rcutils_get_zero_initialized_uint8_array();
         auto allocator = rcutils_get_default_allocator();
-        const auto ret = rcutils_uint8_array_init(arr, rcl_buf.buffer_length, &allocator);
+        const auto ret = rcutils_uint8_array_init(arr, cdr_buf.data.size(), &allocator);
         if (ret != RCUTILS_RET_OK || arr->buffer == nullptr) {
           delete arr;
           std::cerr << "OOM: failed to allocate output message buffer\n";
           return 1;
         }
-        std::memcpy(arr->buffer, rcl_buf.buffer, rcl_buf.buffer_length);
-        arr->buffer_length = rcl_buf.buffer_length;
+        std::memcpy(arr->buffer, cdr_buf.data.data(), cdr_buf.data.size());
+        arr->buffer_length = cdr_buf.data.size();
         out_msg->serialized_data =
           std::shared_ptr<rcutils_uint8_array_t>(arr, [](rcutils_uint8_array_t * p) {
             rcutils_uint8_array_fini(p);
