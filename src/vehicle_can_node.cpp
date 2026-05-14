@@ -189,7 +189,8 @@ void VehicleCanNode::load_parameters()
     declare_parameter(sigs_param, std::vector<std::string>{});
 
     schema_domain_topics_[name] = get_parameter(topic_param).as_string();
-    for (const auto & sig : get_parameter(sigs_param).as_string_array()) {
+    const auto domain_signals = get_parameter(sigs_param).as_string_array();
+    for (const auto & sig : domain_signals) {
       signal_to_domain_[sig] = name;
     }
   }
