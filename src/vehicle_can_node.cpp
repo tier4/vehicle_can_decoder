@@ -214,8 +214,7 @@ void VehicleCanNode::load_parameters()
 
   if (unit_id_names_.size() > 0xFFFFu) {
     throw std::runtime_error(
-      "unit_id_names exceeds maximum of 65535 entries: " +
-      std::to_string(unit_id_names_.size()));
+      "unit_id_names exceeds maximum of 65535 entries: " + std::to_string(unit_id_names_.size()));
   }
   for (size_t i = 0; i < unit_id_names_.size(); ++i) {
     unit_name_to_id_[unit_id_names_[i]] = static_cast<uint16_t>(i + 1);
@@ -340,8 +339,7 @@ void VehicleCanNode::process_frame(const CanFrame & frame, const rclcpp::Time & 
   all_sigs_.clear();
 
   for (const RawSignal & raw_sig : *decoded) {
-    const auto [name, domain] =
-      resolve_signal(raw_sig.name, frame.id, router_, signal_to_domain_);
+    const auto [name, domain] = resolve_signal(raw_sig.name, frame.id, router_, signal_to_domain_);
 
     TransformResult tr;
     try {
@@ -401,7 +399,6 @@ void VehicleCanNode::process_frame(const CanFrame & frame, const rclcpp::Time & 
     all_group.signals = std::move(all_sigs_);
     all_signals_pub_->publish(all_group);
   }
-
 }
 
 // ── Diagnostics timer callback ────────────────────────────────────────────────

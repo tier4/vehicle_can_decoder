@@ -45,8 +45,9 @@ std::vector<std::string> TimeoutMonitor::check_timeouts(uint64_t now_ms, uint64_
       // Signal has never been received; do not flag as timed-out yet.
       continue;
     }
-    if (state.status == STATUS_OK && now_ms > state.last_seen_ms &&
-        (now_ms - state.last_seen_ms) > timeout_ms) {
+    if (
+      state.status == STATUS_OK && now_ms > state.last_seen_ms &&
+      (now_ms - state.last_seen_ms) > timeout_ms) {
       state.status = STATUS_TIMEOUT;
       newly_timed_out.push_back(name);
     }

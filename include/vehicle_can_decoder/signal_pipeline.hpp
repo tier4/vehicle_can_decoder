@@ -26,9 +26,7 @@ struct SignalResolution
 /// the same DBC name in different messages can be aliased independently.
 /// Falls back to the bare signal name alias, then to CAN-ID-based routing.
 inline SignalResolution resolve_signal(
-  const std::string & raw_name,
-  uint32_t can_id,
-  const SignalRouter & router,
+  const std::string & raw_name, uint32_t can_id, const SignalRouter & router,
   const std::unordered_map<std::string, std::string> & signal_to_domain)
 {
   // Compound key disambiguation: "CAN{id}_{signal}" takes precedence over
@@ -42,8 +40,8 @@ inline SignalResolution resolve_signal(
   std::string domain;
   if (!signal_to_domain.empty()) {
     const auto it = signal_to_domain.find(resolved);
-    domain = (it != signal_to_domain.end()) ? it->second
-                                            : std::string(SignalRouter::kUnassignedDomain);
+    domain =
+      (it != signal_to_domain.end()) ? it->second : std::string(SignalRouter::kUnassignedDomain);
   } else {
     domain = router.domain_for_id(can_id);
   }

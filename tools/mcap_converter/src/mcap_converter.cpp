@@ -534,8 +534,8 @@ int main(int argc, char * argv[])
       groups.clear();
 
       for (const auto & raw_sig : *decoded) {
-        const auto res =
-          vehicle_can_decoder::resolve_signal(raw_sig.name, ros_frame.id, router, cfg.signal_to_domain);
+        const auto res = vehicle_can_decoder::resolve_signal(
+          raw_sig.name, ros_frame.id, router, cfg.signal_to_domain);
         if (!res.is_assigned()) continue;
         const auto & name = res.name;
         const auto & domain = res.domain;
@@ -571,9 +571,8 @@ int main(int argc, char * argv[])
         auto out_msg = std::make_shared<rosbag2_storage::SerializedBagMessage>();
         out_msg->topic_name = topic_it->second;
         static constexpr int64_t kNsPerSec = 1'000'000'000LL;
-        out_msg->time_stamp =
-          static_cast<int64_t>(ros_frame.header.stamp.sec) * kNsPerSec +
-          ros_frame.header.stamp.nanosec;
+        out_msg->time_stamp = static_cast<int64_t>(ros_frame.header.stamp.sec) * kNsPerSec +
+                              ros_frame.header.stamp.nanosec;
 
         // In Humble, SerializedBagMessage::serialized_data is
         // shared_ptr<rcutils_uint8_array_t>. Allocate a new array on the
