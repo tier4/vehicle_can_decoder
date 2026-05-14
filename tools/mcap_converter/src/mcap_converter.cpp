@@ -39,13 +39,63 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <unistd.h>
+
+// ── Temporary ament prefix for MCAP schema lookup ────────────────────────────
+//
+// rosbag2_storage_mcap calls ament_index_cpp::get_package_share_directory() to
+// find the .msg file when writing the MCAP schema.  On machines where
+// vehicle_can_decoder is not installed as a ROS package, this lookup fails and
+// the schema is written as empty — Foxglove then rejects the file with
+// "schema encoding '' is not supported".
+//
+// We create a minimal ament resource index in a temp directory, write the .msg
+// file contents as string literals, and prepend the directory to
+// AMENT_PREFIX_PATH before opening the writer.  ament_index_cpp reads the env
+// var on every call (not cached), so setting it here is sufficient.
+namespace ament_prefix
+{
+
+static const char kSignalMsg[] =
+  "uint16 name_id\n"
+  "float32 value\n";
+
+static const char kSignalGroupMsg[] =
+  "std_msgs/Header header\n"
+  "string domain\n"
+  "vehicle_can_decoder/Signal[] signals\n";
+
+inline std::filesystem::path create(const std::filesystem::path & prefix)
+{
+  namespace fs = std::filesystem;
+
+  // ament_index_cpp::get_package_share_directory() checks for a file at:
+  //   <prefix>/share/ament_index/resource_index/packages/<pkg>
+  // and returns  <prefix>/share/<pkg>.
+  const fs::path pkg_index = prefix / "share/ament_index/resource_index/packages";
+  fs::create_directories(pkg_index);
+  std::ofstream{pkg_index / "vehicle_can_decoder"};  // empty marker file
+
+  const fs::path msg_dir = prefix / "share/vehicle_can_decoder/msg";
+  fs::create_directories(msg_dir);
+
+  { std::ofstream f(msg_dir / "Signal.msg");      f << kSignalMsg; }
+  { std::ofstream f(msg_dir / "SignalGroup.msg");  f << kSignalGroupMsg; }
+
+  return prefix;
+}
+
+}  // namespace ament_prefix
 
 // ── Manual CDR serializer for SignalGroup ─────────────────────────────────────
 //
@@ -384,6 +434,23 @@ int main(int argc, char * argv[])
   // rosbag2_cpp::Writer always creates a directory regardless of URI.
   const std::string storage_id = reader->get_metadata().storage_identifier;
 
+  // ── Register vehicle_can_decoder .msg files in a temp ament prefix ───────
+  // rosbag2_storage_mcap calls ament_index_cpp::get_package_share_directory()
+  // when create_topic() is called to look up the message schema.  If the
+  // package is absent the schema is left empty and Foxglove rejects the file.
+  // Prepend a temp prefix with the msg files before opening the writer so the
+  // lookup succeeds.  ament_index_cpp reads AMENT_PREFIX_PATH on each call.
+  const std::filesystem::path tmp_prefix =
+    std::filesystem::temp_directory_path() /
+    ("vcd_mcap_schema_" + std::to_string(static_cast<long>(::getpid())));
+  ament_prefix::create(tmp_prefix);
+  {
+    const char * existing = std::getenv("AMENT_PREFIX_PATH");
+    const std::string updated =
+      tmp_prefix.string() + (existing ? std::string(":") + existing : "");
+    ::setenv("AMENT_PREFIX_PATH", updated.c_str(), 1);
+  }
+
   // ── Open output bag ────────────────────────────────────────────────────────
   rosbag2_storage::StorageOptions output_opts;
   output_opts.uri = args.output;
@@ -547,5 +614,6 @@ int main(int argc, char * argv[])
             << "  SignalGroups out:  " << groups_out << "\n"
             << "  Passthrough msgs:  " << passthrough << "\n";
 
+  std::filesystem::remove_all(tmp_prefix);
   return 0;
 }
