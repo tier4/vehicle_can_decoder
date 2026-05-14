@@ -100,8 +100,7 @@ struct Buffer
   }
 };
 
-inline void serialize_signal_group(
-  const vehicle_can_decoder::msg::SignalGroup & sg, Buffer & buf)
+inline void serialize_signal_group(const vehicle_can_decoder::msg::SignalGroup & sg, Buffer & buf)
 {
   buf.data.insert(buf.data.end(), {0x00, 0x01, 0x00, 0x00});  // CDR little-endian header
 
