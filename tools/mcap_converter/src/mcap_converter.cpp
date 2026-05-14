@@ -35,6 +35,7 @@
 #include <can_msgs/msg/frame.hpp>
 
 #include <rcutils/types/uint8_array.h>
+#include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
 #include <array>
@@ -48,8 +49,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <unistd.h>
 
 // ── Temporary ament prefix for MCAP schema lookup ────────────────────────────
 //
@@ -89,8 +88,14 @@ inline std::filesystem::path create(const std::filesystem::path & prefix)
   const fs::path msg_dir = prefix / "share/vehicle_can_decoder/msg";
   fs::create_directories(msg_dir);
 
-  { std::ofstream f(msg_dir / "Signal.msg");      f << kSignalMsg; }
-  { std::ofstream f(msg_dir / "SignalGroup.msg");  f << kSignalGroupMsg; }
+  {
+    std::ofstream f(msg_dir / "Signal.msg");
+    f << kSignalMsg;
+  }
+  {
+    std::ofstream f(msg_dir / "SignalGroup.msg");
+    f << kSignalGroupMsg;
+  }
 
   return prefix;
 }
@@ -446,8 +451,7 @@ int main(int argc, char * argv[])
   ament_prefix::create(tmp_prefix);
   {
     const char * existing = std::getenv("AMENT_PREFIX_PATH");
-    const std::string updated =
-      tmp_prefix.string() + (existing ? std::string(":") + existing : "");
+    const std::string updated = tmp_prefix.string() + (existing ? std::string(":") + existing : "");
     ::setenv("AMENT_PREFIX_PATH", updated.c_str(), 1);
   }
 
