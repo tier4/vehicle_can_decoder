@@ -3,6 +3,7 @@
 #include "vehicle_can_decoder/vehicle_can_node.hpp"
 
 #include "vehicle_can_decoder/msg/signal.hpp"
+#include "vehicle_can_decoder/signal_pipeline.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -121,6 +122,11 @@ void VehicleCanNode::load_parameters()
     dc.name = name;
     dc.topic = topic;
     for (const int64_t id : id_list) {
+      if (id < 0 || id > 0x1FFFFFFF) {
+        throw std::runtime_error(
+          "CAN ID " + std::to_string(id) + " in domain '" + name +
+          "' is out of range [0, 0x1FFFFFFF]");
+      }
       dc.can_ids.insert(static_cast<uint32_t>(id));
     }
     domains.push_back(std::move(dc));
@@ -183,8 +189,7 @@ void VehicleCanNode::load_parameters()
     declare_parameter(sigs_param, std::vector<std::string>{});
 
     schema_domain_topics_[name] = get_parameter(topic_param).as_string();
-    domain_schema_[name] = get_parameter(sigs_param).as_string_array();
-    for (const auto & sig : domain_schema_.at(name)) {
+    for (const auto & sig : get_parameter(sigs_param).as_string_array()) {
       signal_to_domain_[sig] = name;
     }
   }
@@ -207,11 +212,21 @@ void VehicleCanNode::load_parameters()
     throw std::runtime_error("signal_id_unit_names must have the same length as signal_id_names");
   }
 
-  for (uint16_t i = 0; i < static_cast<uint16_t>(unit_id_names_.size()); ++i) {
+  if (unit_id_names_.size() > 0xFFFFu) {
+    throw std::runtime_error(
+      "unit_id_names exceeds maximum of 65535 entries: " +
+      std::to_string(unit_id_names_.size()));
+  }
+  for (size_t i = 0; i < unit_id_names_.size(); ++i) {
     unit_name_to_id_[unit_id_names_[i]] = static_cast<uint16_t>(i + 1);
   }
 
-  for (uint16_t i = 0; i < static_cast<uint16_t>(signal_id_names_list.size()); ++i) {
+  if (signal_id_names_list.size() > 0xFFFFu) {
+    throw std::runtime_error(
+      "signal_id_names exceeds maximum of 65535 entries: " +
+      std::to_string(signal_id_names_list.size()));
+  }
+  for (size_t i = 0; i < signal_id_names_list.size(); ++i) {
     const uint16_t signal_id = static_cast<uint16_t>(i + 1);
     signal_name_to_id_[signal_id_names_list[i]] = signal_id;
 
@@ -299,8 +314,11 @@ void VehicleCanNode::on_can_frame(const can_msgs::msg::Frame::SharedPtr msg)
 {
   CanFrame frame{};
   frame.id = msg->id;
-  frame.dlc = msg->dlc;
-  std::copy(msg->data.begin(), msg->data.end(), frame.data.begin());
+  frame.dlc = (msg->dlc <= 8u) ? msg->dlc : 8u;
+  std::copy_n(msg->data.begin(), frame.dlc, frame.data.begin());
+  if (frame.dlc < 8u) {
+    std::fill(frame.data.begin() + frame.dlc, frame.data.end(), uint8_t{0});
+  }
   process_frame(frame, rclcpp::Time(msg->header.stamp));
 }
 
@@ -318,26 +336,12 @@ void VehicleCanNode::process_frame(const CanFrame & frame, const rclcpp::Time & 
 
   ++frames_decoded_;
 
-  std::unordered_map<std::string, std::vector<msg::Signal>> frame_signals;
-  std::vector<msg::Signal> all_sigs;
+  frame_signals_.clear();
+  all_sigs_.clear();
 
   for (const RawSignal & raw_sig : *decoded) {
-    // Apply alias: try compound key "CAN{id}_{signal}" first to disambiguate
-    // signals that share the same name across different CAN messages.
-    const std::string compound_key = "CAN" + std::to_string(frame.id) + "_" + raw_sig.name;
-    const std::string & compound_alias = router_.apply_alias(compound_key);
-    const std::string & name =
-      (compound_alias != compound_key) ? compound_alias : router_.apply_alias(raw_sig.name);
-
-    // Determine domain: schema-based routing takes precedence over CAN-ID-based.
-    std::string domain;
-    if (!signal_to_domain_.empty()) {
-      const auto it = signal_to_domain_.find(name);
-      domain =
-        (it != signal_to_domain_.end()) ? it->second : std::string(SignalRouter::kUnassignedDomain);
-    } else {
-      domain = router_.domain_for_id(frame.id);
-    }
+    const auto [name, domain] =
+      resolve_signal(raw_sig.name, frame.id, router_, signal_to_domain_);
 
     TransformResult tr;
     try {
@@ -358,9 +362,9 @@ void VehicleCanNode::process_frame(const CanFrame & frame, const rclcpp::Time & 
     // Unassigned signals (not in the schema) are discarded.
     if (domain != SignalRouter::kUnassignedDomain) {
       timeout_monitor_.signal_received(name, now_ms());
-      frame_signals[domain].push_back(sig_msg);
+      frame_signals_[domain].push_back(sig_msg);
       if (publish_all_signals_) {
-        all_sigs.push_back(sig_msg);
+        all_sigs_.push_back(sig_msg);
       }
     }
 
@@ -376,7 +380,7 @@ void VehicleCanNode::process_frame(const CanFrame & frame, const rclcpp::Time & 
   }
 
   // Publish one SignalGroup per domain immediately
-  for (auto & [domain, signals] : frame_signals) {
+  for (auto & [domain, signals] : frame_signals_) {
     msg::SignalGroup group;
     group.header.stamp = stamp;
     group.header.frame_id = "";
@@ -389,19 +393,15 @@ void VehicleCanNode::process_frame(const CanFrame & frame, const rclcpp::Time & 
   }
 
   // Firehose: all received signals from this frame
-  if (publish_all_signals_ && all_signals_pub_ && !all_sigs.empty()) {
+  if (publish_all_signals_ && all_signals_pub_ && !all_sigs_.empty()) {
     msg::SignalGroup all_group;
     all_group.header.stamp = stamp;
     all_group.header.frame_id = "";
     all_group.domain = "all";
-    all_group.signals = std::move(all_sigs);
+    all_group.signals = std::move(all_sigs_);
     all_signals_pub_->publish(all_group);
   }
 
-  // Check for signal timeouts and log newly-timed-out signals
-  for (const auto & name : timeout_monitor_.check_timeouts(now_ms(), signal_timeout_ms_)) {
-    RCLCPP_WARN(get_logger(), "Signal timeout: '%s'", name.c_str());
-  }
 }
 
 // ── Diagnostics timer callback ────────────────────────────────────────────────
@@ -416,9 +416,11 @@ void VehicleCanNode::on_diagnostics_timer()
   diag.frames_unknown = frames_unknown_;
   diag.decode_errors = decode_errors_;
 
-  const auto ts = timeout_monitor_.timed_out_signals();
-  diag.timed_out_signals = ts;
+  for (const auto & name : timeout_monitor_.check_timeouts(now_ms(), signal_timeout_ms_)) {
+    RCLCPP_WARN(get_logger(), "Signal timeout: '%s'", name.c_str());
+  }
 
+  diag.timed_out_signals = timeout_monitor_.timed_out_signals();
   diagnostics_pub_->publish(diag);
 }
 

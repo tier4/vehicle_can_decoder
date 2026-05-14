@@ -18,11 +18,10 @@ namespace vehicle_can_decoder
 class TimeoutMonitor
 {
 public:
-  /// Signal status values (match Signal.msg constants).
+  /// Signal status values (internal to TimeoutMonitor; not serialized to Signal.msg).
   static constexpr uint8_t STATUS_OK = 0;
   static constexpr uint8_t STATUS_TIMEOUT = 1;
-  static constexpr uint8_t STATUS_ERROR = 2;
-  static constexpr uint8_t STATUS_INITIAL = 3;
+  static constexpr uint8_t STATUS_INITIAL = 2;
 
   /// Register a signal to be monitored.
   /// Must be called before signal_received() or get_status().

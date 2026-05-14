@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -33,7 +34,12 @@ struct DbcDecoder::Impl
       return;
     }
     for (const dbcppp::IMessage & msg : network->Messages()) {
-      msg_map[msg.Id()] = &msg;
+      const auto [it, inserted] = msg_map.emplace(msg.Id(), &msg);
+      if (!inserted) {
+        std::cerr << "[dbc_decoder] Duplicate DBC message ID 0x" << std::hex << msg.Id()
+                  << std::dec << " ('" << msg.Name()
+                  << "'): first entry kept, duplicate discarded.\n";
+      }
     }
   }
 };

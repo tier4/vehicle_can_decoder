@@ -36,8 +36,10 @@ struct TransformResult
 ///   t.configure({{"VehicleSpeed", {"x / 3.6", "m/s"}}});
 ///   auto r = t.transform("VehicleSpeed", 100.0);  // r.value ≈ 27.78
 ///
-/// Thread safety: configure() is not thread-safe. transform() is safe to
-/// call concurrently after configure() completes.
+/// Thread safety: neither configure() nor transform() is thread-safe.
+/// Each CompiledExpr holds a mutable symbol-table variable (x) that is
+/// written by evaluate(); concurrent calls for the same signal name are a
+/// data race. Safe under rclcpp::spin() (single-threaded executor).
 class SignalTransformer
 {
 public:

@@ -86,10 +86,7 @@ private:
   // use "CAN{decimal_id}_{signal_name}" as the alias_names key to disambiguate.
   // Example: "CAN556_OUTPUT_VALUE" maps only STEERING_RPT's OUTPUT_VALUE.
 
-  /// Domain name → ordered list of canonical signal names (from schema).
-  std::unordered_map<std::string, std::vector<std::string>> domain_schema_;
-
-  /// Canonical signal name → domain name (reverse index of domain_schema_).
+  /// Canonical signal name → domain name (built from schema params).
   std::unordered_map<std::string, std::string> signal_to_domain_;
 
   /// Domain name → ROS 2 topic (from schema params, may differ from domains.*).
@@ -131,6 +128,10 @@ private:
   // ── Timers ───────────────────────────────────────────────────────────────────
   rclcpp::TimerBase::SharedPtr diagnostics_timer_;
   rclcpp::TimerBase::SharedPtr schema_timer_;
+
+  // ── Per-frame working buffers (reused across frames to avoid heap churn) ────
+  std::unordered_map<std::string, std::vector<msg::Signal>> frame_signals_;
+  std::vector<msg::Signal> all_sigs_;
 
   // ── Diagnostic counters ───────────────────────────────────────────────────
   uint64_t frames_received_{0};

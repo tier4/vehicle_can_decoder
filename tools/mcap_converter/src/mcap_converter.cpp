@@ -21,6 +21,7 @@
 //     --config <vehicle.yaml> [--config <schema.yaml> ...]
 
 #include "vehicle_can_decoder/dbc_decoder.hpp"
+#include "vehicle_can_decoder/signal_pipeline.hpp"
 #include "vehicle_can_decoder/signal_router.hpp"
 #include "vehicle_can_decoder/signal_transformer.hpp"
 
@@ -157,7 +158,9 @@ struct Buffer
 
 inline void serialize_signal_group(const vehicle_can_decoder::msg::SignalGroup & sg, Buffer & buf)
 {
-  buf.data.insert(buf.data.end(), {0x00, 0x01, 0x00, 0x00});  // CDR little-endian header
+  // OMG CDR §9.3.2 encapsulation header: 0x0001 = CDR_LE (little-endian), 2 padding bytes
+  static constexpr std::array<uint8_t, 4> kCdrLeHeader{0x00, 0x01, 0x00, 0x00};
+  buf.data.insert(buf.data.end(), kCdrLeHeader.begin(), kCdrLeHeader.end());
 
   // std_msgs/Header
   buf.write_int32(sg.header.stamp.sec);
@@ -464,6 +467,7 @@ int main(int argc, char * argv[])
     writer->open(output_opts);
   } catch (const std::exception & e) {
     std::cerr << "Failed to open output bag: " << e.what() << "\n";
+    std::filesystem::remove_all(tmp_prefix);
     return 1;
   }
 
@@ -517,8 +521,9 @@ int main(int argc, char * argv[])
 
       // ── Decode via DBC ────────────────────────────────────────────────
       std::array<uint8_t, 8> data_arr{};
-      std::copy_n(ros_frame.data.begin(), ros_frame.dlc, data_arr.begin());
-      const auto decoded = decoder.decode(ros_frame.id, data_arr, ros_frame.dlc);
+      const uint8_t valid_dlc = (ros_frame.dlc <= 8u) ? ros_frame.dlc : 8u;
+      std::copy_n(ros_frame.data.begin(), valid_dlc, data_arr.begin());
+      const auto decoded = decoder.decode(ros_frame.id, data_arr, valid_dlc);
       if (!decoded) {
         ++frames_unknown;
         continue;
@@ -529,23 +534,11 @@ int main(int argc, char * argv[])
       groups.clear();
 
       for (const auto & raw_sig : *decoded) {
-        // Compound key "CAN{id}_{signal}" tried first to disambiguate signals
-        // that share the same name across different CAN messages.
-        const std::string compound = "CAN" + std::to_string(ros_frame.id) + "_" + raw_sig.name;
-        const std::string & compound_alias = router.apply_alias(compound);
-        const std::string & name =
-          (compound_alias != compound) ? compound_alias : router.apply_alias(raw_sig.name);
-
-        // Schema-based routing takes precedence over CAN-ID-based routing.
-        std::string domain;
-        if (!cfg.signal_to_domain.empty()) {
-          const auto domain_it = cfg.signal_to_domain.find(name);
-          domain = (domain_it != cfg.signal_to_domain.end()) ? domain_it->second
-                                                             : SignalRouter::kUnassignedDomain;
-        } else {
-          domain = router.domain_for_id(ros_frame.id);
-        }
-        if (domain == SignalRouter::kUnassignedDomain) continue;
+        const auto res =
+          vehicle_can_decoder::resolve_signal(raw_sig.name, ros_frame.id, router, cfg.signal_to_domain);
+        if (!res.is_assigned()) continue;
+        const auto & name = res.name;
+        const auto & domain = res.domain;
 
         const auto tr = transformer.transform(name, raw_sig.value);
 
@@ -577,8 +570,10 @@ int main(int argc, char * argv[])
 
         auto out_msg = std::make_shared<rosbag2_storage::SerializedBagMessage>();
         out_msg->topic_name = topic_it->second;
-        out_msg->time_stamp = static_cast<int64_t>(ros_frame.header.stamp.sec) * 1'000'000'000LL +
-                              ros_frame.header.stamp.nanosec;
+        static constexpr int64_t kNsPerSec = 1'000'000'000LL;
+        out_msg->time_stamp =
+          static_cast<int64_t>(ros_frame.header.stamp.sec) * kNsPerSec +
+          ros_frame.header.stamp.nanosec;
 
         // In Humble, SerializedBagMessage::serialized_data is
         // shared_ptr<rcutils_uint8_array_t>. Allocate a new array on the
@@ -591,6 +586,7 @@ int main(int argc, char * argv[])
         if (ret != RCUTILS_RET_OK || arr->buffer == nullptr) {
           delete arr;
           std::cerr << "OOM: failed to allocate output message buffer\n";
+          std::filesystem::remove_all(tmp_prefix);
           return 1;
         }
         std::memcpy(arr->buffer, cdr_buf.data.data(), cdr_buf.data.size());
@@ -607,6 +603,7 @@ int main(int argc, char * argv[])
     }
   } catch (const std::exception & e) {
     std::cerr << "Error during conversion: " << e.what() << "\n";
+    std::filesystem::remove_all(tmp_prefix);
     return 1;
   }
 
