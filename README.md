@@ -75,16 +75,16 @@ ros2 launch vehicle_can_decoder vehicle_can_decoder.launch.py \
 All node parameters can be overridden from the CLI without editing YAML files.
 Parameter layering (later entries win): launch defaults < `schema_file` < `config_file` < `dbc_file`.
 
-| Launch argument        | Default                  | Description                                      |
-| ---------------------- | ------------------------ | ------------------------------------------------ |
-| `schema_file`          | *(empty)*                | Optional path to shared schema YAML              |
-| `config_file`          | *(required)*             | Path to DBC-specific vehicle YAML                |
-| `dbc_file`             | *(required)*             | Path to DBC file                                 |
-| `can_topic`            | `/vehicle/from_can_bus`  | Incoming `can_msgs/Frame` topic                  |
-| `publish_all_signals`  | `true`                   | Publish all decoded signals as a firehose topic  |
-| `all_signals_topic`    | `/vehicle/decoded_can`   | Topic name for the firehose `SignalGroup`         |
-| `signal_timeout_ms`    | `500`                    | Milliseconds before a signal is considered stale |
-| `diagnostics_rate_hz`  | `1.0`                    | Rate (Hz) for `SignalDiagnostic` messages        |
+| Launch argument       | Default                 | Description                                      |
+| --------------------- | ----------------------- | ------------------------------------------------ |
+| `schema_file`         | _(empty)_               | Optional path to shared schema YAML              |
+| `config_file`         | _(required)_            | Path to DBC-specific vehicle YAML                |
+| `dbc_file`            | _(required)_            | Path to DBC file                                 |
+| `can_topic`           | `/vehicle/from_can_bus` | Incoming `can_msgs/Frame` topic                  |
+| `publish_all_signals` | `true`                  | Publish all decoded signals as a firehose topic  |
+| `all_signals_topic`   | `/vehicle/decoded_can`  | Topic name for the firehose `SignalGroup`        |
+| `signal_timeout_ms`   | `500`                   | Milliseconds before a signal is considered stale |
+| `diagnostics_rate_hz` | `1.0`                   | Rate (Hz) for `SignalDiagnostic` messages        |
 
 ### 5. Verify
 
@@ -98,12 +98,12 @@ ros2 topic echo /vehicle/diagnostics
 
 ## Output Topics
 
-| Topic                       | Type               | Description                                                    |
-| --------------------------- | ------------------ | -------------------------------------------------------------- |
-| `/vehicle/schema`           | `VehicleSchema`    | Signal name/unit lookup table; transient_local QoS             |
-| `/vehicle/decoded_can`      | `SignalGroup`      | All decoded signals per tick (configurable via `all_signals_topic`) |
-| `/vehicle/<domain>`         | `SignalGroup`      | Per-domain signals (requires `schema_publish_per_domain: true`) |
-| `/vehicle/signals/<suffix>` | `std_msgs/Float64` | Promoted individual signals                                    |
+| Topic                       | Type               | Description                                                           |
+| --------------------------- | ------------------ | --------------------------------------------------------------------- |
+| `/vehicle/schema`           | `VehicleSchema`    | Signal name/unit lookup table; transient_local QoS                    |
+| `/vehicle/decoded_can`      | `SignalGroup`      | All decoded signals per tick (configurable via `all_signals_topic`)   |
+| `/vehicle/<domain>`         | `SignalGroup`      | Per-domain signals (requires `schema_publish_per_domain: true`)       |
+| `/vehicle/signals/<suffix>` | `std_msgs/Float64` | Promoted individual signals                                           |
 | `/vehicle/diagnostics`      | `SignalDiagnostic` | Frame counts, timeouts, errors (configurable via `diagnostics_topic`) |
 
 ---
