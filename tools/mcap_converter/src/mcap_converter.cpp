@@ -338,7 +338,6 @@ struct Args
   std::string output;
   std::string dbc;
   std::vector<std::string> configs;
-  bool split_by_input = false;
 };
 
 void print_usage(const char * prog)
@@ -347,8 +346,7 @@ void print_usage(const char * prog)
             << "  --input          <bag_or_dir>   Input bag (MCAP or sqlite3, dir or file)\n"
             << "  --output         <out_dir>      Output directory\n"
             << "  --dbc            <vehicle.dbc>  DBC file\n"
-            << "  --config         <config.yaml>  Vehicle config YAML (repeatable)\n"
-            << "  [--split-by-input]              Split output to match input file boundaries\n";
+            << "  --config         <config.yaml>  Vehicle config YAML (repeatable)\n";
 }
 
 Args parse_args(int argc, char * argv[])
@@ -356,9 +354,7 @@ Args parse_args(int argc, char * argv[])
   Args a;
   for (int i = 1; i < argc; ++i) {
     const std::string f = argv[i];
-    if (f == "--split-by-input") {
-      a.split_by_input = true;
-    } else if (i + 1 < argc) {
+    if (i + 1 < argc) {
       if (f == "--input")
         a.input = argv[++i];
       else if (f == "--output")
@@ -380,7 +376,10 @@ std::vector<std::filesystem::path> find_bag_files(const std::filesystem::path & 
 {
   std::vector<std::filesystem::path> files;
   for (const auto & e : std::filesystem::recursive_directory_iterator(dir)) {
-    if (e.is_regular_file() && kBagExtensions.count(e.path().extension().string()))
+    if (!e.is_regular_file()) continue;
+    // Skip files inside .__bag temp dirs left by interrupted runs.
+    if (e.path().string().find(".__bag") != std::string::npos) continue;
+    if (kBagExtensions.count(e.path().extension().string()))
       files.push_back(e.path());
   }
   std::sort(files.begin(), files.end());
@@ -402,7 +401,6 @@ using vehicle_can_decoder::SignalTransformer;
 int convert_one(
   const std::string & input,
   const std::string & output,
-  bool split_by_input,
   const Config & cfg,
   const DbcDecoder & decoder,
   const SignalRouter & router,
@@ -458,34 +456,6 @@ int convert_one(
   rosbag2_storage::StorageOptions output_opts;
   output_opts.uri = output;
   output_opts.storage_id = storage_id;
-
-  if (split_by_input) {
-    const size_t n = metadata.relative_file_paths.size();
-    if (n <= 1) {
-      std::cout << "Split-by-input: single file input, no splitting applied.\n";
-    } else {
-      uint64_t split_ns = 0;
-      if (metadata.files.size() == n) {
-        split_ns = static_cast<uint64_t>(metadata.files.front().duration.count());
-        bool non_uniform = false;
-        for (size_t i = 1; i + 1 < metadata.files.size(); ++i) {
-          if (static_cast<uint64_t>(metadata.files[i].duration.count()) != split_ns) {
-            non_uniform = true;
-            break;
-          }
-        }
-        if (non_uniform) {
-          std::cerr
-            << "Warning: non-uniform file durations; output splits may not match input exactly.\n";
-        }
-      } else {
-        split_ns = static_cast<uint64_t>(metadata.duration.count()) / n;
-      }
-      output_opts.max_bagfile_duration = split_ns;
-      std::cout << "Split-by-input: " << n
-                << " input files, split duration = " << split_ns / 1'000'000'000.0 << "s\n";
-    }
-  }
 
   auto writer = std::make_unique<rosbag2_cpp::Writer>();
   try {
@@ -698,19 +668,62 @@ int main(int argc, char * argv[])
       std::filesystem::remove_all(tmp_prefix);
       return 1;
     }
+    namespace fs = std::filesystem;
     std::cout << "Batch: " << files.size() << " file(s) in " << args.input << "\n";
     for (size_t i = 0; i < files.size(); ++i) {
-      const auto rel = std::filesystem::relative(files[i], args.input);
-      const auto out = std::filesystem::path(args.output) / rel;
-      std::filesystem::create_directories(out.parent_path());
+      const auto rel = fs::relative(files[i], args.input);
+      const auto out = fs::path(args.output) / rel;
+      fs::create_directories(out.parent_path());
+
+      if (fs::exists(out)) {
+        std::cerr << "Output already exists: " << out
+                  << ". Remove it first or choose a different output path.\n";
+        ret = 1;
+        break;
+      }
+
+      // Convert to a temp bag dir so that `out` only appears once fully complete.
+      // bag_tmp shares the same parent as out → fs::rename() is always same-filesystem.
+      const auto bag_tmp = fs::path(out.string() + ".__bag");
+      if (fs::exists(bag_tmp)) {
+        std::cerr << "Leftover temp dir exists: " << bag_tmp
+                  << ". Remove it manually and retry.\n";
+        ret = 1;
+        break;
+      }
+
       std::cout << "[" << (i + 1) << "/" << files.size() << "] " << rel.string() << "\n";
-      ret = convert_one(
-        files[i].string(), out.string(), args.split_by_input, cfg, decoder, router, transformer);
-      if (ret != 0) break;
+      ret = convert_one(files[i].string(), bag_tmp.string(), cfg, decoder, router, transformer);
+      if (ret != 0) {
+        fs::remove_all(bag_tmp);
+        break;
+      }
+
+      // Unwrap: find the single data file rosbag2 wrote inside the bag directory.
+      // Discard the rosbag2 internal filename; rename to `out` (original input name).
+      std::vector<fs::path> data_files;
+      for (const auto & e : fs::directory_iterator(bag_tmp)) {
+        const auto ext = e.path().extension().string();
+        if (ext == ".mcap" || ext == ".db3" || ext == ".sqlite3")
+          data_files.push_back(e.path());
+      }
+      if (data_files.size() != 1) {
+        std::cerr << "Unexpected file count (" << data_files.size()
+                  << ") in bag dir " << bag_tmp << ". Leaving as-is to avoid data loss.\n";
+        ret = 1;
+        break;
+      }
+      // Atomic rename on same filesystem; fall back to copy+delete across mounts.
+      try {
+        fs::rename(data_files[0], out);
+      } catch (const fs::filesystem_error &) {
+        fs::copy_file(data_files[0], out);
+        fs::remove(data_files[0]);
+      }
+      fs::remove_all(bag_tmp);
     }
   } else {
-    ret = convert_one(
-      args.input, args.output, args.split_by_input, cfg, decoder, router, transformer);
+    ret = convert_one(args.input, args.output, cfg, decoder, router, transformer);
   }
 
   std::filesystem::remove_all(tmp_prefix);
