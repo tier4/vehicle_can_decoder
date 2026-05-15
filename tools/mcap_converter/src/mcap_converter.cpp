@@ -51,6 +51,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 // ── Temporary ament prefix for MCAP schema lookup ────────────────────────────
@@ -647,7 +648,7 @@ int main(int argc, char * argv[])
   // on each call so prepending here covers all files in a batch run.
   const std::filesystem::path tmp_prefix =
     std::filesystem::temp_directory_path() /
-    ("vcd_mcap_schema_" + std::to_string(static_cast<long>(::getpid())));
+    ("vcd_mcap_schema_" + std::to_string(static_cast<int64_t>(::getpid())));
   ament_prefix::create(tmp_prefix);
   {
     const char * existing = std::getenv("AMENT_PREFIX_PATH");
