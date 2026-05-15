@@ -15,12 +15,12 @@ vehicle_can_node:
     # (never stored in the YAML config)
 
     # ── Timing ────────────────────────────────────────────
-    signal_timeout_ms: 500            # Mark signal stale after this many ms (must be > 0)
-    diagnostics_rate_hz: 1.0          # How often to publish diagnostics (must be > 0)
-    schema_republish_interval_s: 1.0  # How often to re-publish VehicleSchema (must be > 0)
+    signal_timeout_ms: 500 # Mark signal stale after this many ms (must be > 0)
+    diagnostics_rate_hz: 1.0 # How often to publish diagnostics (must be > 0)
+    schema_republish_interval_s: 1.0 # How often to re-publish VehicleSchema (must be > 0)
 
     # ── Firehose topic ─────────────────────────────────────
-    publish_all_signals: true             # Publish firehose SignalGroup topic?
+    publish_all_signals: true # Publish firehose SignalGroup topic?
     all_signals_topic: "/vehicle/decoded_can" # Firehose topic name
 
     # ── Diagnostics ────────────────────────────────────────
@@ -28,7 +28,7 @@ vehicle_can_node:
 
     # ── Schema mode ────────────────────────────────────────
     # Set schema_domain_names to enable schema mode (see "Schema Mode" section below).
-    schema_publish_per_domain: true   # Publish per-domain topics in schema mode
+    schema_publish_per_domain: true # Publish per-domain topics in schema mode
 ```
 
 ## Operating Modes
@@ -49,7 +49,7 @@ domains.chassis.topic: "/vehicle/chassis"
 domains.chassis.can_ids: [0x100, 0x101, 0x102] # Hex or decimal
 
 domains.powertrain.topic: "/vehicle/powertrain"
-domains.powertrain.can_ids: [512, 513]          # Decimal (same as 0x200, 0x201)
+domains.powertrain.can_ids: [512, 513] # Decimal (same as 0x200, 0x201)
 ```
 
 ### Mode B — Schema Mode (split schema + DBC-specific config)
@@ -107,10 +107,10 @@ signal_id_unit_names:
 # List position (1-indexed) becomes unit_id in SignalEntry.msg.
 # NEVER reorder or remove — append only.
 unit_id_names:
-  - ""    # id=1  dimensionless / normalized
-  - m/s   # id=2
+  - "" # id=1  dimensionless / normalized
+  - m/s # id=2
   - rad/s # id=3
-  - rad   # id=4
+  - rad # id=4
 ```
 
 `signal_id_unit_names` must have the same length as `signal_id_names`. A warning is logged
