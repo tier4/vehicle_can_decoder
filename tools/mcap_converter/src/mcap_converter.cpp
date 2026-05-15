@@ -1,7 +1,7 @@
 // Copyright 2026 TIER IV, Inc.
 //
 // Offline bag conversion tool. Reads can_msgs/Frame messages from an input
-// rosbag2 bag (MCAP or sqlite3, directory or single-file) and writes
+// rosbag2 bag (MCAP or sqlite3, file or directory of bags) and writes
 // vehicle_can_decoder/SignalGroup messages to an output bag by running the
 // same decode → alias → transform pipeline as the live ROS 2 node.
 //
@@ -39,6 +39,7 @@
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -47,6 +48,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -370,6 +372,21 @@ Args parse_args(int argc, char * argv[])
   return a;
 }
 
+// ── Batch file discovery ──────────────────────────────────────────────────────
+
+static const std::set<std::string> kBagExtensions = {".mcap", ".db3", ".sqlite3"};
+
+std::vector<std::filesystem::path> find_bag_files(const std::filesystem::path & dir)
+{
+  std::vector<std::filesystem::path> files;
+  for (const auto & e : std::filesystem::recursive_directory_iterator(dir)) {
+    if (e.is_regular_file() && kBagExtensions.count(e.path().extension().string()))
+      files.push_back(e.path());
+  }
+  std::sort(files.begin(), files.end());
+  return files;
+}
+
 }  // namespace
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -378,43 +395,20 @@ using vehicle_can_decoder::DbcDecoder;
 using vehicle_can_decoder::SignalRouter;
 using vehicle_can_decoder::SignalTransformer;
 
-int main(int argc, char * argv[])
+// ── Per-file conversion ────────────────────────────────────────────────────────
+// ament_prefix must already be set in the environment before calling.
+// Returns 0 on success, 1 on error.  Does NOT touch tmp_prefix — caller owns it.
+
+int convert_one(
+  const std::string & input,
+  const std::string & output,
+  bool split_by_input,
+  const Config & cfg,
+  const DbcDecoder & decoder,
+  const SignalRouter & router,
+  const SignalTransformer & transformer)
 {
-  const Args args = parse_args(argc, argv);
-  if (args.input.empty() || args.output.empty() || args.dbc.empty() || args.configs.empty()) {
-    print_usage(argv[0]);
-    return 1;
-  }
-
-  // ── Load and merge YAML configs ───────────────────────────────────────────
-  ParamMap params;
-  for (const auto & path : args.configs) {
-    try {
-      for (const auto & kv : load_yaml(path)) {
-        params[kv.first] = kv.second;
-      }
-    } catch (const std::exception & e) {
-      std::cerr << "Failed to load config '" << path << "': " << e.what() << "\n";
-      return 1;
-    }
-  }
-  const Config cfg = build_config(params);
-
-  // ── Setup signal processing pipeline ──────────────────────────────────────
-  DbcDecoder decoder;
-  if (!decoder.load(args.dbc)) {
-    std::cerr << "Failed to load DBC: " << args.dbc << "\n";
-    return 1;
-  }
-  std::cout << "DBC: " << args.dbc << " (" << decoder.known_ids().size() << " messages)\n";
-
-  SignalRouter router;
-  for (const auto & w : router.configure(cfg.domains, cfg.aliases)) {
-    std::cerr << "Warning: " << w << "\n";
-  }
-
-  SignalTransformer transformer;
-  transformer.configure(cfg.transforms);
+  namespace fs = std::filesystem;
 
   // ── Build domain → topic map ───────────────────────────────────────────────
   std::unordered_map<std::string, std::string> domain_to_topic;
@@ -426,15 +420,15 @@ int main(int argc, char * argv[])
   }
 
   // ── Check output does not already exist ───────────────────────────────────
-  if (std::filesystem::exists(args.output)) {
-    std::cerr << "Output already exists: " << args.output
+  if (fs::exists(output)) {
+    std::cerr << "Output already exists: " << output
               << ". Remove it first or choose a different output path.\n";
     return 1;
   }
 
   // ── Open input bag ─────────────────────────────────────────────────────────
   rosbag2_storage::StorageOptions input_opts;
-  input_opts.uri = args.input;
+  input_opts.uri = input;
   auto reader = std::make_unique<rosbag2_cpp::Reader>();
   try {
     reader->open(input_opts);
@@ -450,9 +444,9 @@ int main(int argc, char * argv[])
   if (storage_id.empty()) {
     // Single-file input (no metadata.yaml): synthesized metadata leaves storage_identifier
     // empty, causing Writer to default to sqlite3.  Infer the format from the URI extension.
-    const auto dot = args.input.rfind('.');
+    const auto dot = input.rfind('.');
     if (dot != std::string::npos) {
-      const auto ext = args.input.substr(dot + 1);
+      const auto ext = input.substr(dot + 1);
       if (ext == "mcap")
         storage_id = "mcap";
       else if (ext == "db3")
@@ -460,28 +454,12 @@ int main(int argc, char * argv[])
     }
   }
 
-  // ── Register vehicle_can_decoder .msg files in a temp ament prefix ───────
-  // rosbag2_storage_mcap calls ament_index_cpp::get_package_share_directory()
-  // when create_topic() is called to look up the message schema.  If the
-  // package is absent the schema is left empty and Foxglove rejects the file.
-  // Prepend a temp prefix with the msg files before opening the writer so the
-  // lookup succeeds.  ament_index_cpp reads AMENT_PREFIX_PATH on each call.
-  const std::filesystem::path tmp_prefix =
-    std::filesystem::temp_directory_path() /
-    ("vcd_mcap_schema_" + std::to_string(static_cast<long>(::getpid())));
-  ament_prefix::create(tmp_prefix);
-  {
-    const char * existing = std::getenv("AMENT_PREFIX_PATH");
-    const std::string updated = tmp_prefix.string() + (existing ? std::string(":") + existing : "");
-    ::setenv("AMENT_PREFIX_PATH", updated.c_str(), 1);
-  }
-
   // ── Open output bag ────────────────────────────────────────────────────────
   rosbag2_storage::StorageOptions output_opts;
-  output_opts.uri = args.output;
+  output_opts.uri = output;
   output_opts.storage_id = storage_id;
 
-  if (args.split_by_input) {
+  if (split_by_input) {
     const size_t n = metadata.relative_file_paths.size();
     if (n <= 1) {
       std::cout << "Split-by-input: single file input, no splitting applied.\n";
@@ -514,7 +492,6 @@ int main(int argc, char * argv[])
     writer->open(output_opts);
   } catch (const std::exception & e) {
     std::cerr << "Failed to open output bag: " << e.what() << "\n";
-    std::filesystem::remove_all(tmp_prefix);
     return 1;
   }
 
@@ -544,7 +521,7 @@ int main(int argc, char * argv[])
   uint64_t frames_in = 0, frames_decoded = 0, frames_unknown = 0;
   uint64_t groups_out = 0, passthrough = 0;
 
-  std::cout << "Converting: " << args.input << " → " << args.output << "\n";
+  std::cout << "Converting: " << input << " → " << output << "\n";
 
   try {
     while (reader->has_next()) {
@@ -632,7 +609,6 @@ int main(int argc, char * argv[])
         if (ret != RCUTILS_RET_OK || arr->buffer == nullptr) {
           delete arr;
           std::cerr << "OOM: failed to allocate output message buffer\n";
-          std::filesystem::remove_all(tmp_prefix);
           return 1;
         }
         std::memcpy(arr->buffer, cdr_buf.data.data(), cdr_buf.data.size());
@@ -649,7 +625,6 @@ int main(int argc, char * argv[])
     }
   } catch (const std::exception & e) {
     std::cerr << "Error during conversion: " << e.what() << "\n";
-    std::filesystem::remove_all(tmp_prefix);
     return 1;
   }
 
@@ -661,6 +636,83 @@ int main(int argc, char * argv[])
             << "  SignalGroups out:  " << groups_out << "\n"
             << "  Passthrough msgs:  " << passthrough << "\n";
 
-  std::filesystem::remove_all(tmp_prefix);
   return 0;
+}
+
+int main(int argc, char * argv[])
+{
+  const Args args = parse_args(argc, argv);
+  if (args.input.empty() || args.output.empty() || args.dbc.empty() || args.configs.empty()) {
+    print_usage(argv[0]);
+    return 1;
+  }
+
+  // ── Load and merge YAML configs ───────────────────────────────────────────
+  ParamMap params;
+  for (const auto & path : args.configs) {
+    try {
+      for (const auto & kv : load_yaml(path)) {
+        params[kv.first] = kv.second;
+      }
+    } catch (const std::exception & e) {
+      std::cerr << "Failed to load config '" << path << "': " << e.what() << "\n";
+      return 1;
+    }
+  }
+  const Config cfg = build_config(params);
+
+  // ── Setup signal processing pipeline ──────────────────────────────────────
+  DbcDecoder decoder;
+  if (!decoder.load(args.dbc)) {
+    std::cerr << "Failed to load DBC: " << args.dbc << "\n";
+    return 1;
+  }
+  std::cout << "DBC: " << args.dbc << " (" << decoder.known_ids().size() << " messages)\n";
+
+  SignalRouter router;
+  for (const auto & w : router.configure(cfg.domains, cfg.aliases)) {
+    std::cerr << "Warning: " << w << "\n";
+  }
+
+  SignalTransformer transformer;
+  transformer.configure(cfg.transforms);
+
+  // ── Register vehicle_can_decoder .msg files in a temp ament prefix ───────
+  // Set once before any conversion; ament_index_cpp reads AMENT_PREFIX_PATH
+  // on each call so prepending here covers all files in a batch run.
+  const std::filesystem::path tmp_prefix =
+    std::filesystem::temp_directory_path() /
+    ("vcd_mcap_schema_" + std::to_string(static_cast<long>(::getpid())));
+  ament_prefix::create(tmp_prefix);
+  {
+    const char * existing = std::getenv("AMENT_PREFIX_PATH");
+    const std::string updated = tmp_prefix.string() + (existing ? std::string(":") + existing : "");
+    ::setenv("AMENT_PREFIX_PATH", updated.c_str(), 1);
+  }
+
+  int ret = 0;
+  if (std::filesystem::is_directory(args.input)) {
+    const auto files = find_bag_files(args.input);
+    if (files.empty()) {
+      std::cerr << "No bag files found in: " << args.input << "\n";
+      std::filesystem::remove_all(tmp_prefix);
+      return 1;
+    }
+    std::cout << "Batch: " << files.size() << " file(s) in " << args.input << "\n";
+    for (size_t i = 0; i < files.size(); ++i) {
+      const auto rel = std::filesystem::relative(files[i], args.input);
+      const auto out = std::filesystem::path(args.output) / rel;
+      std::filesystem::create_directories(out.parent_path());
+      std::cout << "[" << (i + 1) << "/" << files.size() << "] " << rel.string() << "\n";
+      ret = convert_one(
+        files[i].string(), out.string(), args.split_by_input, cfg, decoder, router, transformer);
+      if (ret != 0) break;
+    }
+  } else {
+    ret = convert_one(
+      args.input, args.output, args.split_by_input, cfg, decoder, router, transformer);
+  }
+
+  std::filesystem::remove_all(tmp_prefix);
+  return ret;
 }
