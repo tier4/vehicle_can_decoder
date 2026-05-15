@@ -488,10 +488,10 @@ int main(int argc, char * argv[])
     } else {
       uint64_t split_ns = 0;
       if (metadata.files.size() == n) {
-        split_ns = static_cast<uint64_t>(metadata.files.front().duration);
+        split_ns = static_cast<uint64_t>(metadata.files.front().duration.count());
         bool non_uniform = false;
         for (size_t i = 1; i + 1 < metadata.files.size(); ++i) {
-          if (static_cast<uint64_t>(metadata.files[i].duration) != split_ns) {
+          if (static_cast<uint64_t>(metadata.files[i].duration.count()) != split_ns) {
             non_uniform = true;
             break;
           }
@@ -501,7 +501,7 @@ int main(int argc, char * argv[])
             << "Warning: non-uniform file durations; output splits may not match input exactly.\n";
         }
       } else {
-        split_ns = static_cast<uint64_t>(metadata.duration) / n;
+        split_ns = static_cast<uint64_t>(metadata.duration.count()) / n;
       }
       output_opts.max_bagfile_duration = split_ns;
       std::cout << "Split-by-input: " << n
