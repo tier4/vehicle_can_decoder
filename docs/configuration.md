@@ -196,7 +196,7 @@ to start if the DBC file cannot be opened.
 
 When using the launch file, parameters are merged in this order (later entries win):
 
-```
+```text
 launch defaults < schema_file < config_file < dbc_file (CLI argument)
 ```
 
