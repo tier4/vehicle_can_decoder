@@ -34,7 +34,7 @@ config-level aliases and transforms alone.
 For PACMod configs:
 
 - `body.lights.turn_signal` — correctly populated; enum value `3` represents HAZARD.
-- `body.lights.hazard` — always `STATUS_INITIAL` (not published).
+- `body.lights.hazard` — never decoded (no corresponding DBC signal), so never published.
 
 ### Workaround
 

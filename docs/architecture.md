@@ -56,7 +56,6 @@ One row in the signal lookup table:
 Published at startup and periodically on `/vehicle/schema` with transient_local QoS (see `schema_republish_interval_s`):
 
 - `header` — Standard ROS 2 header
-- `vehicle_id` — From config
 - `schema_version` (`string`) — Semantic version (major bump = breaking bag change)
 - `signal_table[]` — Array of `SignalEntry`; index by `name_id - 1`
 - `unit_table[]` (`string[]`) — Unit strings; index by `unit_id - 1`
@@ -66,8 +65,7 @@ Published at startup and periodically on `/vehicle/schema` with transient_local 
 Grouped signals from one domain:
 
 - `header` — ROS 2 standard header with timestamp
-- `domain` — Domain name (e.g., `"chassis"`)
-- `vehicle_id` — From config
+- `domain` — Domain name (e.g., `"chassis"`); `"all"` for the firehose topic
 - `signals[]` — Array of `Signal.msg`
 
 ### SignalDiagnostic.msg
@@ -75,7 +73,6 @@ Grouped signals from one domain:
 Node health (published at `diagnostics_rate_hz`):
 
 - `header` — ROS 2 standard header with timestamp
-- `vehicle_id` — From config
 - `can_topic` — ROS 2 topic name providing CAN frames
 - `frames_received` — Total `can_msgs/Frame` messages received
 - `frames_decoded` — Frames successfully matched to a DBC message
