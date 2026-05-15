@@ -2,7 +2,7 @@
 
 ## ROS 2 CAN-to-Topic Abstraction Layer
 
-A config-driven ROS 2 Humble C++ node that reads raw SocketCAN frames, decodes them using DBC files, applies value transformations, and publishes normalized vehicle signals to ROS 2 topics.
+A config-driven ROS 2 Humble C++ node that subscribes to `can_msgs/Frame` messages, decodes them using DBC files, applies value transformations, and publishes normalized vehicle signals to ROS 2 topics.
 
 **Key Feature**: Add new vehicles or signals by editing YAML and DBC files — no recompilation needed.
 
