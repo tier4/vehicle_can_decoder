@@ -379,8 +379,7 @@ std::vector<std::filesystem::path> find_bag_files(const std::filesystem::path & 
     if (!e.is_regular_file()) continue;
     // Skip files inside .__bag temp dirs left by interrupted runs.
     if (e.path().string().find(".__bag") != std::string::npos) continue;
-    if (kBagExtensions.count(e.path().extension().string()))
-      files.push_back(e.path());
+    if (kBagExtensions.count(e.path().extension().string())) files.push_back(e.path());
   }
   std::sort(files.begin(), files.end());
   return files;
@@ -399,12 +398,8 @@ using vehicle_can_decoder::SignalTransformer;
 // Returns 0 on success, 1 on error.  Does NOT touch tmp_prefix — caller owns it.
 
 int convert_one(
-  const std::string & input,
-  const std::string & output,
-  const Config & cfg,
-  const DbcDecoder & decoder,
-  const SignalRouter & router,
-  const SignalTransformer & transformer)
+  const std::string & input, const std::string & output, const Config & cfg,
+  const DbcDecoder & decoder, const SignalRouter & router, const SignalTransformer & transformer)
 {
   namespace fs = std::filesystem;
 
@@ -686,8 +681,7 @@ int main(int argc, char * argv[])
       // bag_tmp shares the same parent as out → fs::rename() is always same-filesystem.
       const auto bag_tmp = fs::path(out.string() + ".__bag");
       if (fs::exists(bag_tmp)) {
-        std::cerr << "Leftover temp dir exists: " << bag_tmp
-                  << ". Remove it manually and retry.\n";
+        std::cerr << "Leftover temp dir exists: " << bag_tmp << ". Remove it manually and retry.\n";
         ret = 1;
         break;
       }
@@ -704,12 +698,11 @@ int main(int argc, char * argv[])
       std::vector<fs::path> data_files;
       for (const auto & e : fs::directory_iterator(bag_tmp)) {
         const auto ext = e.path().extension().string();
-        if (ext == ".mcap" || ext == ".db3" || ext == ".sqlite3")
-          data_files.push_back(e.path());
+        if (ext == ".mcap" || ext == ".db3" || ext == ".sqlite3") data_files.push_back(e.path());
       }
       if (data_files.size() != 1) {
-        std::cerr << "Unexpected file count (" << data_files.size()
-                  << ") in bag dir " << bag_tmp << ". Leaving as-is to avoid data loss.\n";
+        std::cerr << "Unexpected file count (" << data_files.size() << ") in bag dir " << bag_tmp
+                  << ". Leaving as-is to avoid data loss.\n";
         ret = 1;
         break;
       }
