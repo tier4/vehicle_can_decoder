@@ -336,15 +336,17 @@ struct Args
   std::string output;
   std::string dbc;
   std::vector<std::string> configs;
+  bool split_by_input = false;
 };
 
 void print_usage(const char * prog)
 {
   std::cerr << "Usage: " << prog << " \\\n"
-            << "  --input   <bag_or_dir>   Input bag (MCAP or sqlite3, dir or file)\n"
-            << "  --output  <out_dir>      Output directory\n"
-            << "  --dbc     <vehicle.dbc>  DBC file\n"
-            << "  --config  <config.yaml>  Vehicle config YAML (repeatable)\n";
+            << "  --input          <bag_or_dir>   Input bag (MCAP or sqlite3, dir or file)\n"
+            << "  --output         <out_dir>      Output directory\n"
+            << "  --dbc            <vehicle.dbc>  DBC file\n"
+            << "  --config         <config.yaml>  Vehicle config YAML (repeatable)\n"
+            << "  [--split-by-input]              Split output to match input file boundaries\n";
 }
 
 Args parse_args(int argc, char * argv[])
@@ -352,15 +354,18 @@ Args parse_args(int argc, char * argv[])
   Args a;
   for (int i = 1; i < argc; ++i) {
     const std::string f = argv[i];
-    if (i + 1 >= argc) continue;
-    if (f == "--input")
-      a.input = argv[++i];
-    else if (f == "--output")
-      a.output = argv[++i];
-    else if (f == "--dbc")
-      a.dbc = argv[++i];
-    else if (f == "--config")
-      a.configs.push_back(argv[++i]);
+    if (f == "--split-by-input") {
+      a.split_by_input = true;
+    } else if (i + 1 < argc) {
+      if (f == "--input")
+        a.input = argv[++i];
+      else if (f == "--output")
+        a.output = argv[++i];
+      else if (f == "--dbc")
+        a.dbc = argv[++i];
+      else if (f == "--config")
+        a.configs.push_back(argv[++i]);
+    }
   }
   return a;
 }
@@ -440,7 +445,18 @@ int main(int argc, char * argv[])
 
   // Match output storage type to input (mcap or sqlite3).
   // rosbag2_cpp::Writer always creates a directory regardless of URI.
-  const std::string storage_id = reader->get_metadata().storage_identifier;
+  const auto metadata = reader->get_metadata();
+  std::string storage_id = metadata.storage_identifier;
+  if (storage_id.empty()) {
+    // Single-file input (no metadata.yaml): synthesized metadata leaves storage_identifier
+    // empty, causing Writer to default to sqlite3.  Infer the format from the URI extension.
+    const auto dot = args.input.rfind('.');
+    if (dot != std::string::npos) {
+      const auto ext = args.input.substr(dot + 1);
+      if (ext == "mcap") storage_id = "mcap";
+      else if (ext == "db3") storage_id = "sqlite3";
+    }
+  }
 
   // ── Register vehicle_can_decoder .msg files in a temp ament prefix ───────
   // rosbag2_storage_mcap calls ament_index_cpp::get_package_share_directory()
@@ -462,6 +478,34 @@ int main(int argc, char * argv[])
   rosbag2_storage::StorageOptions output_opts;
   output_opts.uri = args.output;
   output_opts.storage_id = storage_id;
+
+  if (args.split_by_input) {
+    const size_t n = metadata.relative_file_paths.size();
+    if (n <= 1) {
+      std::cout << "Split-by-input: single file input, no splitting applied.\n";
+    } else {
+      uint64_t split_ns = 0;
+      if (metadata.files.size() == n) {
+        split_ns = static_cast<uint64_t>(metadata.files.front().duration);
+        bool non_uniform = false;
+        for (size_t i = 1; i + 1 < metadata.files.size(); ++i) {
+          if (static_cast<uint64_t>(metadata.files[i].duration) != split_ns) {
+            non_uniform = true;
+            break;
+          }
+        }
+        if (non_uniform) {
+          std::cerr << "Warning: non-uniform file durations; output splits may not match input exactly.\n";
+        }
+      } else {
+        split_ns = static_cast<uint64_t>(metadata.duration) / n;
+      }
+      output_opts.max_bagfile_duration = split_ns;
+      std::cout << "Split-by-input: " << n << " input files, split duration = "
+                << split_ns / 1'000'000'000.0 << "s\n";
+    }
+  }
+
   auto writer = std::make_unique<rosbag2_cpp::Writer>();
   try {
     writer->open(output_opts);
