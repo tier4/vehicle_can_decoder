@@ -453,8 +453,10 @@ int main(int argc, char * argv[])
     const auto dot = args.input.rfind('.');
     if (dot != std::string::npos) {
       const auto ext = args.input.substr(dot + 1);
-      if (ext == "mcap") storage_id = "mcap";
-      else if (ext == "db3") storage_id = "sqlite3";
+      if (ext == "mcap")
+        storage_id = "mcap";
+      else if (ext == "db3")
+        storage_id = "sqlite3";
     }
   }
 
@@ -495,14 +497,15 @@ int main(int argc, char * argv[])
           }
         }
         if (non_uniform) {
-          std::cerr << "Warning: non-uniform file durations; output splits may not match input exactly.\n";
+          std::cerr
+            << "Warning: non-uniform file durations; output splits may not match input exactly.\n";
         }
       } else {
         split_ns = static_cast<uint64_t>(metadata.duration) / n;
       }
       output_opts.max_bagfile_duration = split_ns;
-      std::cout << "Split-by-input: " << n << " input files, split duration = "
-                << split_ns / 1'000'000'000.0 << "s\n";
+      std::cout << "Split-by-input: " << n
+                << " input files, split duration = " << split_ns / 1'000'000'000.0 << "s\n";
     }
   }
 
