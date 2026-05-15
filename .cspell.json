@@ -12,6 +12,7 @@
     "exprtk",
     "FETCHCONTENT",
     "libdbcppp",
+    "libvehicle",
     "liblz",
     "libzstd",
     "LKAS",
