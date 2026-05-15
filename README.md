@@ -39,24 +39,58 @@ ros2 launch ros2_socketcan socket_can_receiver.launch.xml \
 
 ### 3. Create a Vehicle Config
 
+Two config layouts are supported:
+
+**A) All-in-one (single file)** — domains, aliases, transforms in one YAML:
+
 ```bash
 cp ~/ros2_ws/src/vehicle_can_decoder/config/example_vehicle.yaml ~/my_vehicle.yaml
-# Edit ~/my_vehicle.yaml: set can_topic, domains, aliases, transforms
+# Edit ~/my_vehicle.yaml: set domain_names, aliases, transforms, promoted_signals
 ```
+
+**B) Split schema + DBC-specific (recommended for multi-vehicle setups)**:
+
+```bash
+# vehicle_schema.yaml  — canonical signal names, unit IDs, domain layout (shared)
+# pacmod_v3.yaml       — DBC-specific aliases and transforms
+```
+
+Use `config/vehicle_schema.yaml` as the schema file and `config/pacmod_v3.yaml` (or `toyota_nodsu_pt_hybrid.yaml`) as the config file.
 
 ### 4. Launch
 
 ```bash
+# Minimal (all-in-one config)
 ros2 launch vehicle_can_decoder vehicle_can_decoder.launch.py \
   config_file:=/absolute/path/to/my_vehicle.yaml \
   dbc_file:=/absolute/path/to/vehicle.dbc
+
+# Split schema + DBC-specific config
+ros2 launch vehicle_can_decoder vehicle_can_decoder.launch.py \
+  schema_file:=/absolute/path/to/vehicle_schema.yaml \
+  config_file:=/absolute/path/to/pacmod_v3.yaml \
+  dbc_file:=/absolute/path/to/vehicle.dbc
 ```
+
+All node parameters can be overridden from the CLI without editing YAML files.
+Parameter layering (later entries win): launch defaults < `schema_file` < `config_file` < `dbc_file`.
+
+| Launch argument        | Default                  | Description                                      |
+| ---------------------- | ------------------------ | ------------------------------------------------ |
+| `schema_file`          | *(empty)*                | Optional path to shared schema YAML              |
+| `config_file`          | *(required)*             | Path to DBC-specific vehicle YAML                |
+| `dbc_file`             | *(required)*             | Path to DBC file                                 |
+| `can_topic`            | `/vehicle/from_can_bus`  | Incoming `can_msgs/Frame` topic                  |
+| `publish_all_signals`  | `true`                   | Publish all decoded signals as a firehose topic  |
+| `all_signals_topic`    | `/vehicle/decoded_can`   | Topic name for the firehose `SignalGroup`         |
+| `signal_timeout_ms`    | `500`                    | Milliseconds before a signal is considered stale |
+| `diagnostics_rate_hz`  | `1.0`                    | Rate (Hz) for `SignalDiagnostic` messages        |
 
 ### 5. Verify
 
 ```bash
 ros2 topic echo /vehicle/schema
-ros2 topic echo /vehicle/chassis
+ros2 topic echo /vehicle/decoded_can
 ros2 topic echo /vehicle/diagnostics
 ```
 
@@ -64,13 +98,13 @@ ros2 topic echo /vehicle/diagnostics
 
 ## Output Topics
 
-| Topic                       | Type               | Description                                               |
-| --------------------------- | ------------------ | --------------------------------------------------------- |
-| `/vehicle/schema`           | `VehicleSchema`    | Signal name/unit lookup table; transient_local QoS        |
-| `/vehicle/decoded_can`      | `SignalGroup`      | All decoded signals per tick                              |
-| `/vehicle/<domain>`         | `SignalGroup`      | Per-domain signals (if `schema_publish_per_domain: true`) |
-| `/vehicle/signals/<suffix>` | `std_msgs/Float64` | Promoted individual signals                               |
-| `/vehicle/diagnostics`      | `SignalDiagnostic` | Frame counts, timeouts, errors                            |
+| Topic                       | Type               | Description                                                    |
+| --------------------------- | ------------------ | -------------------------------------------------------------- |
+| `/vehicle/schema`           | `VehicleSchema`    | Signal name/unit lookup table; transient_local QoS             |
+| `/vehicle/decoded_can`      | `SignalGroup`      | All decoded signals per tick (configurable via `all_signals_topic`) |
+| `/vehicle/<domain>`         | `SignalGroup`      | Per-domain signals (requires `schema_publish_per_domain: true`) |
+| `/vehicle/signals/<suffix>` | `std_msgs/Float64` | Promoted individual signals                                    |
+| `/vehicle/diagnostics`      | `SignalDiagnostic` | Frame counts, timeouts, errors (configurable via `diagnostics_topic`) |
 
 ---
 
