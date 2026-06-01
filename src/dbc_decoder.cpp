@@ -98,7 +98,7 @@ bool DbcDecoder::load(const std::string & dbc_file_path)
 // ── decode ────────────────────────────────────────────────────────────────────
 
 std::optional<std::vector<RawSignal>> DbcDecoder::decode(
-  uint32_t can_id, const std::array<uint8_t, 8> & data, uint8_t dlc) const
+  uint32_t can_id, const std::array<uint8_t, 8> & data, [[maybe_unused]] uint8_t dlc) const
 {
   if (!loaded_) {
     return std::nullopt;

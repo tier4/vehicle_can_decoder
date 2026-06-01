@@ -3,7 +3,6 @@
 // Unit tests for schema-related helpers used by VehicleCanNode.
 //
 // - CompoundAliasTest: verifies "CAN{id}_{signal}" compound key disambiguation
-// - SignalStatusTest:  verifies STATUS_* constant values in Signal.msg
 
 #include "vehicle_can_decoder/signal_router.hpp"
 

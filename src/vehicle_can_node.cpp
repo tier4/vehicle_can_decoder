@@ -456,8 +456,8 @@ void VehicleCanNode::publish_schema()
 
 uint64_t VehicleCanNode::now_ms() const
 {
-  const int64_t ns = now().nanoseconds();
-  return (ns >= 0) ? (static_cast<uint64_t>(ns) / 1'000'000ULL) : 0ULL;
+  const auto ns = std::chrono::steady_clock::now().time_since_epoch();
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(ns).count());
 }
 
 }  // namespace vehicle_can_decoder

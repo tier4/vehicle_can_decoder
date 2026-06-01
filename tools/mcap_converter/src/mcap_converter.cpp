@@ -324,7 +324,10 @@ Config build_config(const ParamMap & p)
   }
 
   const auto sig_names = get_sv(p, "signal_id_names");
-  for (uint16_t i = 0; i < static_cast<uint16_t>(sig_names.size()); ++i) {
+  for (size_t i = 0; i < sig_names.size(); ++i) {
+    if (i >= 0xFFFFu) {
+      throw std::runtime_error("signal_id_names exceeds maximum of 65535 entries");
+    }
     cfg.signal_name_to_id[sig_names[i]] = static_cast<uint16_t>(i + 1);
   }
 

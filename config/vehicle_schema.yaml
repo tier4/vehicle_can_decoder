@@ -22,8 +22,8 @@
 #   - Routing is by canonical signal name (not CAN ID).
 #   - schema_publish_per_domain: false suppresses per-domain topics; all
 #     schema-assigned signals are published on the firehose topic only.
-#   - Signals absent from the loaded DBC are published as STATUS_INITIAL (3)
-#     in per-domain output; they are omitted from the firehose.
+#   - Signals absent from the loaded DBC are never decoded and therefore never
+#     published; they are omitted from both per-domain topics and the firehose.
 #
 # Signal naming: <domain>.<subsystem>.<attribute>
 #
@@ -38,7 +38,7 @@
 #   P   — AStuff PACMod v3 (as_pacmod.dbc)
 #   T   — commaai Toyota 2017 (_toyota_2017.dbc)
 #   P+T — both DBCs
-#   *   — not available in either DBC (STATUS_INITIAL)
+#   *   — not available in either DBC (never published)
 #
 # Full signal reference (all canonical signals across all domains):
 #   docs/abstracted_schema.md
@@ -127,7 +127,7 @@ vehicle_can_node:
     schema.dynamics.topic: /vehicle/decoded_can
     schema.dynamics.signals:
       - dynamics.speed.longitudinal # [m/s] forward+    P+T
-      - dynamics.speed.lateral # [m/s] left+       *  (STATUS_INITIAL for both DBCs)
+      - dynamics.speed.lateral # [m/s] left+       *  (never published — not in either DBC)
       - dynamics.wheel_speed.front_left # [m/s]             P+T
       - dynamics.wheel_speed.front_right # [m/s]             P+T
       - dynamics.wheel_speed.rear_left # [m/s]             P+T

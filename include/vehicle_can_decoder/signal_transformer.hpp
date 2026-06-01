@@ -17,7 +17,8 @@ struct TransformConfig
   /// If empty, the raw value is passed through unchanged.
   std::string expression;
 
-  /// Physical unit of the output value (informational, written into Signal.unit).
+  /// Physical unit of the output value (informational; returned in TransformResult::unit).
+  /// Signal.msg has no unit field — unit information is carried via schema lookup tables.
   std::string unit;
 };
 

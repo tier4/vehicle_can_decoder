@@ -17,7 +17,7 @@
 #   - operation.throttle  → GAS_PEDAL_HYBRID (BO_581) instead of GAS_PEDAL (BO_705)
 #   - operation.steering  → STEER_ANGLE from STEER_TORQUE_SENSOR (BO_608, factor=0.0573 deg/LSB)
 #   - operation.brake     → not mapped (BRAKE_POSITION signal not used)
-#   - dynamics.angular_vel.pitch / roll: no matching signal in this DBC → STATUS_INITIAL
+#   - dynamics.angular_vel.pitch / roll: no matching signal in this DBC → never published
 #
 # Compound alias format: CAN{decimal_id}_SIGNAL_NAME
 #   Required when the same signal name appears in multiple CAN messages.

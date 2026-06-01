@@ -24,7 +24,10 @@ public:
   static constexpr uint8_t STATUS_INITIAL = 2;
 
   /// Register a signal to be monitored.
-  /// Must be called before signal_received() or get_status().
+  /// Optional: signal_received() auto-registers on first receipt, and
+  /// get_status() returns STATUS_INITIAL for any unregistered signal.
+  /// Call this explicitly when you want STATUS_INITIAL / check_timeouts()
+  /// coverage for signals that may never arrive.
   void register_signal(const std::string & signal_name);
 
   /// Record that a signal was just received (or updated).

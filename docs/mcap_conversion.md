@@ -193,13 +193,15 @@ signal_id_names: [VehicleSpeed, SteeringAngle, BrakePress]
 ## Bag I/O
 
 The tool uses **`rosbag2_cpp`** (`rosbag2_cpp::Reader` / `rosbag2_cpp::Writer`) for bag
-reading and writing, and **`rclcpp::Serialization<T>`** for CDR encoding and decoding.
-No hand-rolled serialization — message layout changes in upstream packages are handled
-automatically by the generated typesupport.
+reading and writing, and **`rclcpp::Serialization<T>`** for CDR decoding of input
+`can_msgs/Frame` messages. Output `SignalGroup` messages are serialized to CDR directly
+(hand-rolled) to avoid a runtime dependency on the introspection type support shared library,
+which may not be present on machines where `vehicle_can_decoder` is not installed as a ROS
+package.
 
-Message schema bytes are **not embedded** in the output bag. Foxglove Studio cannot display
-messages in offline mode without a running ROS 2 instance; use `ros2 bag play` with a
-Foxglove live connection instead.
+To enable MCAP schema embedding, the tool writes `.msg` definition files into a temporary
+ament prefix and prepends it to `AMENT_PREFIX_PATH` before opening the output bag. This
+allows Foxglove Studio to display messages offline without a running ROS 2 instance.
 
 ## CMakeLists.txt for the Converter Executable
 

@@ -50,7 +50,7 @@ vehicle_can_node:
       - CAN560_OUTPUT_VALUE # TURN_RPT(560)          → turn signal enum (value 3 = HAZARD)
       # body.lights.hazard: PACMod has no separate hazard signal.
       #   Hazard state is encoded in body.lights.turn_signal as value 3 (HAZARD).
-      #   body.lights.hazard is therefore STATUS_INITIAL for PACMod configs.
+      #   body.lights.hazard is therefore never published for PACMod configs.
       #   Cross-platform consumers should treat (turn_signal == 3 OR hazard == 1) as hazard.
 
     aliases.VEHICLE_SPEED: dynamics.speed.longitudinal

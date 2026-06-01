@@ -2,9 +2,11 @@
 
 ## Schema embedding for Foxglove offline display
 
-Investigate `rosbag2_storage_mcap`'s schema configuration option to re-enable
-message definition embedding in output bags. Currently the output bag has no
-embedded schema, so Foxglove Studio cannot display messages without a running
-ROS 2 instance. Workaround: use `ros2 bag play` + Foxglove live connection.
+The `tools/mcap_converter` writes `.msg` definition files into a temporary ament prefix and
+prepends it to `AMENT_PREFIX_PATH` before opening the output bag. This enables
+`rosbag2_storage_mcap` to embed message schemas so Foxglove Studio can display messages
+in offline mode without a running ROS 2 instance.
 
-Blocked on: understanding the rosbag2_storage_mcap plugin's schema embedding API.
+If schema embedding stops working after a `rosbag2_storage_mcap` upgrade, check whether
+the plugin's schema-embedding behavior has changed and update the ament prefix workaround
+in `tools/mcap_converter/src/mcap_converter.cpp` accordingly.

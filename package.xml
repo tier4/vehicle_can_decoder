@@ -9,7 +9,7 @@
     state signals to ROS 2 topics. Fully config-driven: adding vehicles or
     signals requires only YAML/DBC changes, no recompilation.
   </description>
-  <maintainer email="maintainer@example.com">maintainer</maintainer>
+  <maintainer email="akihiko.shimizu@citruscosmos.jp">Akihiko Shimizu</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

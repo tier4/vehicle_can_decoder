@@ -83,11 +83,9 @@ bool CanReader::open(const std::string & interface_name)
     return false;
   }
 
-  // Request hardware/software timestamps. Not fatal if unsupported.
+  // Request software timestamps. Not fatal if unsupported.
   int enable = 1;
-  const int ts_result = ::setsockopt(fd_, SOL_SOCKET, SO_TIMESTAMP, &enable, sizeof(enable));
-  const bool hw_timestamp = (ts_result == 0);
-  (void)hw_timestamp;  // used below to decide fallback
+  ::setsockopt(fd_, SOL_SOCKET, SO_TIMESTAMP, &enable, sizeof(enable));
 
   // Set non-blocking
   const int flags = ::fcntl(fd_, F_GETFL, 0);
