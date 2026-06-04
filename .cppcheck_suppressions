@@ -1,6 +1,9 @@
 *:*/test/*
 *:*/examples/*
 *:*/benchmarks/*
+*:test/*
+*:examples/*
+*:benchmarks/*
 
 checkersReport
 missingInclude
@@ -9,3 +12,6 @@ unmatchedSuppression
 unusedFunction
 useInitializationList
 useStlAlgorithm
+unusedStructMember
+unassignedVariable
+internalAstError

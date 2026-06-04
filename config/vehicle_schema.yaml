@@ -1,0 +1,154 @@
+# =============================================================================
+# Vehicle CAN Bridge — Vehicle Signal Schema (ROS 2 parameter format)
+# =============================================================================
+#
+# Load this file alongside a per-DBC config in your launch file:
+#
+#   Node(
+#     package='vehicle_can_decoder',
+#     executable='vehicle_can_node',
+#     parameters=[
+#       vehicle_schema_yaml,   # this file  (schema + output config)
+#       pacmod_v3_yaml,        # DBC-specific aliases + transforms
+#     ]
+#   )
+#
+# Output:
+#   /vehicle/decoded_can — SignalGroup containing all schema-defined signals
+#                          received in the current tick (schema-unassigned
+#                          signals from the DBC are discarded).
+#
+# Schema mode (schema_domain_names non-empty):
+#   - Routing is by canonical signal name (not CAN ID).
+#   - schema_publish_per_domain: false suppresses per-domain topics; all
+#     schema-assigned signals are published on the firehose topic only.
+#   - Signals absent from the loaded DBC are never decoded and therefore never
+#     published; they are omitted from both per-domain topics and the firehose.
+#
+# Signal naming: <domain>.<subsystem>.<attribute>
+#
+# Coordinate system: ISO 8855
+#   +X = forward, +Y = left, +Z = up
+#   Positive yaw = left turn (CCW from above)
+#
+# Shared enum values:
+#   Turn signal: OFF=0, LEFT=1, RIGHT=2, HAZARD=3
+#
+# DBC coverage notation used in comments:
+#   P   — AStuff PACMod v3 (as_pacmod.dbc)
+#   T   — commaai Toyota 2017 (_toyota_2017.dbc)
+#   P+T — both DBCs
+#   *   — not available in either DBC (never published)
+#
+# Full signal reference (all canonical signals across all domains):
+#   docs/abstracted_schema.md
+# =============================================================================
+
+vehicle_can_node:
+  ros__parameters:
+    # -------------------------------------------------------------------------
+    # Schema identity
+    # -------------------------------------------------------------------------
+    # Semantic version.  Increment rules:
+    #   major — any name_id or unit_id changes (breaks bag/topic compatibility)
+    #   minor — new signals or units appended (backward compatible)
+    #   patch — comment/documentation changes only
+    schema_version: 1.1.0
+
+    # -------------------------------------------------------------------------
+    # Signal ID table
+    # -------------------------------------------------------------------------
+    # List position (1-indexed) becomes the signal's name_id in Signal.msg.
+    # NEVER reorder or remove entries — append only to preserve bag compatibility.
+    signal_id_names:
+      - dynamics.speed.longitudinal # id=1
+      - dynamics.speed.lateral # id=2
+      - dynamics.wheel_speed.front_left # id=3
+      - dynamics.wheel_speed.front_right # id=4
+      - dynamics.wheel_speed.rear_left # id=5
+      - dynamics.wheel_speed.rear_right # id=6
+      - dynamics.angular_vel.yaw # id=7
+      - dynamics.angular_vel.pitch # id=8
+      - dynamics.angular_vel.roll # id=9
+      - operation.steering.report.angle # id=10
+      - operation.throttle.report.position # id=11
+      - operation.brake.report.position # id=12
+      - body.lights.turn_signal # id=13
+      - body.lights.hazard # id=14
+
+    # Unit for each signal, parallel to signal_id_names.
+    # Values must appear in unit_id_names below.
+    signal_id_unit_names:
+      - m/s # id=1  dynamics.speed.longitudinal
+      - m/s # id=2  dynamics.speed.lateral
+      - m/s # id=3  dynamics.wheel_speed.front_left
+      - m/s # id=4  dynamics.wheel_speed.front_right
+      - m/s # id=5  dynamics.wheel_speed.rear_left
+      - m/s # id=6  dynamics.wheel_speed.rear_right
+      - rad/s # id=7  dynamics.angular_vel.yaw
+      - rad/s # id=8  dynamics.angular_vel.pitch
+      - rad/s # id=9  dynamics.angular_vel.roll
+      - rad # id=10 operation.steering.report.angle
+      - "" # id=11 operation.throttle.report.position (normalized 0..1)
+      - "" # id=12 operation.brake.report.position    (normalized 0..1)
+      - enum # id=13 body.lights.turn_signal (OFF=0,LEFT=1,RIGHT=2,HAZARD=3)
+      - bool # id=14 body.lights.hazard (0=inactive, 1=active)
+
+    # -------------------------------------------------------------------------
+    # Unit ID table
+    # -------------------------------------------------------------------------
+    # List position (1-indexed) becomes the unit_id in SignalEntry.msg.
+    # NEVER reorder or remove entries — append only.
+    unit_id_names:
+      - "" # id=1  dimensionless / normalized
+      - m/s # id=2
+      - rad/s # id=3
+      - rad # id=4
+      - enum # id=5
+      - bool # id=6
+
+    # -------------------------------------------------------------------------
+    # Output topic: all schema-assigned signals go here as a SignalGroup.
+    all_signals_topic: /vehicle/decoded_can
+    publish_all_signals: true
+
+    # Suppress per-domain topics (/vehicle/dynamics, /vehicle/operation, etc.).
+    # Set to true only when per-domain breakdown is needed for debugging.
+    schema_publish_per_domain: false
+
+    schema_domain_names:
+      - dynamics
+      - operation
+      - body
+
+    # -------------------------------------------------------------------------
+    # 1. DYNAMICS — Vehicle motion state (SI units, ISO 8855 signs)
+    # -------------------------------------------------------------------------
+    schema.dynamics.topic: /vehicle/decoded_can
+    schema.dynamics.signals:
+      - dynamics.speed.longitudinal # [m/s] forward+    P+T
+      - dynamics.speed.lateral # [m/s] left+       *  (never published — not in either DBC)
+      - dynamics.wheel_speed.front_left # [m/s]             P+T
+      - dynamics.wheel_speed.front_right # [m/s]             P+T
+      - dynamics.wheel_speed.rear_left # [m/s]             P+T
+      - dynamics.wheel_speed.rear_right # [m/s]             P+T
+      - dynamics.angular_vel.yaw # [rad/s] CCW+      P+T
+      - dynamics.angular_vel.pitch # [rad/s] nose-up+  P
+      - dynamics.angular_vel.roll # [rad/s] r-down+   P
+
+    # -------------------------------------------------------------------------
+    # 2. OPERATION — Actuator reports
+    # -------------------------------------------------------------------------
+    schema.operation.topic: /vehicle/decoded_can
+    schema.operation.signals:
+      - operation.steering.report.angle # [rad]   left+  P+T
+      - operation.throttle.report.position # [0..1]        P+T
+      - operation.brake.report.position # [0..1]        P+T
+
+    # -------------------------------------------------------------------------
+    # 3. BODY — Driver intent signals
+    # -------------------------------------------------------------------------
+    schema.body.topic: /vehicle/decoded_can
+    schema.body.signals:
+      - body.lights.turn_signal # enum OFF=0,LEFT=1,RIGHT=2,HAZARD=3  P+T
+      - body.lights.hazard # bool 0=inactive,1=active                T

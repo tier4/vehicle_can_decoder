@@ -1,0 +1,91 @@
+# =============================================================================
+# Vehicle CAN Bridge — AStuff PACMod v3 DBC config
+# =============================================================================
+#
+# Load together with vehicle_schema.yaml:
+#
+#   parameters=[vehicle_schema_yaml, pacmod_v3_yaml]
+#
+# DBC: https://github.com/astuff/pacmod_dbc/blob/v3/as_pacmod.dbc
+# Pass the DBC path via the launch argument (not stored in this file):
+#
+#   ros2 launch vehicle_can_decoder vehicle_can_decoder.launch.py \
+#     config_file:=/path/to/pacmod_v3.yaml \
+#     dbc_file:=/path/to/as_pacmod.dbc
+#
+# Alias format:
+#   Simple:   aliases.SIGNAL_NAME: canonical.name
+#   Compound: aliases.CAN{decimal_id}_SIGNAL_NAME: canonical.name
+#             Used when the same signal name appears in multiple CAN messages.
+#             Example: OUTPUT_VALUE appears in ACCEL_RPT(512),
+#             STEERING_RPT(556) → disambiguated by CAN ID prefix.
+#
+# Transforms: exprtk expressions where 'x' is the raw DBC physical value.
+# =============================================================================
+
+vehicle_can_node:
+  ros__parameters:
+    can_topic: /vehicle/from_can_bus
+    signal_timeout_ms: 2000
+    diagnostics_topic: /vehicle/diagnostics
+    diagnostics_rate_hz: 1.0
+
+    # ── Aliases ────────────────────────────────────────────────────────────────
+    # Compound signals (CAN{id}_SIGNAL) for names shared across messages.
+    alias_names:
+      # operation.steering
+      - CAN556_OUTPUT_VALUE # STEERING_RPT(556)      → report angle (rad)
+      # operation.throttle
+      - CAN512_OUTPUT_VALUE # ACCEL_RPT(512)         → report position (ratio)
+      # dynamics
+      - VEHICLE_SPEED # VEHICLE_SPEED_RPT      → m/s
+      - WHEEL_SPD_AXLE_1_LEFT # WHEEL_SPEED_RPT     → rad/s (converted below)
+      - WHEEL_SPD_AXLE_1_RIGHT # WHEEL_SPEED_RPT     → rad/s
+      - WHEEL_SPD_AXLE_2_LEFT # WHEEL_SPEED_RPT     → rad/s
+      - WHEEL_SPD_AXLE_2_RIGHT # WHEEL_SPEED_RPT     → rad/s
+      - YAW_VEL # ANG_VEL_RPT            → rad/s
+      - PITCH_VEL # ANG_VEL_RPT            → rad/s
+      - ROLL_VEL # ANG_VEL_RPT            → rad/s
+      # body.lights
+      - CAN560_OUTPUT_VALUE # TURN_RPT(560)          → turn signal enum (value 3 = HAZARD)
+      # body.lights.hazard: PACMod has no separate hazard signal.
+      #   Hazard state is encoded in body.lights.turn_signal as value 3 (HAZARD).
+      #   body.lights.hazard is therefore never published for PACMod configs.
+      #   Cross-platform consumers should treat (turn_signal == 3 OR hazard == 1) as hazard.
+
+    aliases.VEHICLE_SPEED: dynamics.speed.longitudinal
+    aliases.WHEEL_SPD_AXLE_1_LEFT: dynamics.wheel_speed.front_right
+    aliases.WHEEL_SPD_AXLE_1_RIGHT: dynamics.wheel_speed.front_left
+    aliases.WHEEL_SPD_AXLE_2_LEFT: dynamics.wheel_speed.rear_right
+    aliases.WHEEL_SPD_AXLE_2_RIGHT: dynamics.wheel_speed.rear_left
+    aliases.YAW_VEL: dynamics.angular_vel.yaw
+    aliases.PITCH_VEL: dynamics.angular_vel.pitch
+    aliases.ROLL_VEL: dynamics.angular_vel.roll
+
+    # Compound aliases
+    aliases.CAN556_OUTPUT_VALUE: operation.steering.report.angle
+    aliases.CAN512_OUTPUT_VALUE: operation.throttle.report.position
+    aliases.CAN560_OUTPUT_VALUE: body.lights.turn_signal
+
+    # ── Transforms ────────────────────────────────────────────────────────────
+    # Wheel speeds: PACMod reports rad/s; convert to m/s using wheel radius.
+    # Adjust WHEEL_RADIUS_M for the specific vehicle platform.
+    transform_names:
+      - dynamics.wheel_speed.front_left
+      - dynamics.wheel_speed.front_right
+      - dynamics.wheel_speed.rear_left
+      - dynamics.wheel_speed.rear_right
+      - body.lights.turn_signal
+
+    transforms.dynamics.wheel_speed.front_left.expression: x * 0.31
+    transforms.dynamics.wheel_speed.front_left.unit: m/s
+    transforms.dynamics.wheel_speed.front_right.expression: x * 0.31
+    transforms.dynamics.wheel_speed.front_right.unit: m/s
+    transforms.dynamics.wheel_speed.rear_left.expression: x * 0.31
+    transforms.dynamics.wheel_speed.rear_left.unit: m/s
+    transforms.dynamics.wheel_speed.rear_right.expression: x * 0.31
+    transforms.dynamics.wheel_speed.rear_right.unit: m/s
+
+    # PACMod enum: 0=RIGHT,1=NONE,2=LEFT,3=HAZARD → canonical: OFF=0,LEFT=1,RIGHT=2,HAZARD=3
+    transforms.body.lights.turn_signal.expression: "x == 0 ? 2 : x == 1 ? 0 : x == 2 ? 1 : 3"
+    transforms.body.lights.turn_signal.unit: enum
